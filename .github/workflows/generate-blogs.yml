@@ -1,0 +1,61 @@
+name: Generate Blog Posts
+
+# Run on schedule or manually
+on:
+  schedule:
+    # Runs daily at 9 PM UTC
+    # Cron format: minute hour day month weekday
+    - cron: '0 21 * * *'
+
+  # Allow manual trigger from GitHub UI
+  workflow_dispatch:
+    inputs:
+      count:
+        description: 'Number of blog posts to generate'
+        required: false
+        default: '1'
+        type: string
+
+env:
+  PYTHON_VERSION: '3.11'
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30  # Prevent runaway jobs
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Check queue status
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          DEFAULT_AUTHOR_SLUG: ${{ vars.DEFAULT_AUTHOR_SLUG }}
+        run: |
+          python generator.py --status
+
+      - name: Generate blog posts
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          DEFAULT_AUTHOR_SLUG: ${{ vars.DEFAULT_AUTHOR_SLUG }}
+        run: |
+          # Use input count if manual trigger, otherwise default to 1
+          COUNT="${{ github.event.inputs.count || '1' }}"
+          echo "Generating up to $COUNT blog post(s)..."
+          python generator.py --autonomous --count "$COUNT" --verbose
