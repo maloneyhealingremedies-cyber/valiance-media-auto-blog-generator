@@ -1,29 +1,43 @@
-# ClutchCaddie Autonomous Blog Generator
+# Autonomous Blog Generator
 
-An AI-powered blog generation system that uses Claude to create high-quality golf content for ClutchCaddie. The system connects directly to Supabase, understands your existing content structure, and creates posts with proper formatting, SEO, and tag relationships.
+An AI-powered blog generation system that uses Claude to autonomously create high-quality content. The system connects to Supabase, processes topics from a queue, and outputs structured blog posts with SEO metadata and tag relationships.
+
+## Important: Customization Required
+
+**This is not a plug-and-play solution.** This generator uses a **content block system** where posts are stored as JSON arrays of structured blocks, not HTML. Your frontend must be built to render these blocks.
+
+Before using this generator, you will need to:
+
+1. **Set up your database schema** - Create `blog_posts`, `blog_categories`, `blog_tags`, and `blog_authors` tables in Supabase (see [Database Setup](#database-setup))
+2. **Adapt the content blocks** - Modify the block types in `prompts/system_prompt.md` to match your frontend's rendering capabilities
+3. **Update the write tools** - Adjust `tools/write_tools.py` to match your exact database schema
+4. **Build a frontend renderer** - Create components that render each content block type (React, Vue, vanilla JS, etc.)
+
+This project serves as a **reference implementation** and starting point. Fork it and make it your own.
 
 ## Features
 
-- **Content Block System**: Generates posts using your exact JSONB block structure (18 block types)
+- **Content Block System**: Generates posts as structured JSON blocks (customizable block types)
 - **Autonomous Mode**: Process blog ideas from a queue without manual intervention
-- **Context Awareness**: Reads existing categories, tags, and authors to avoid duplicates
-- **SEO Optimized**: Proper titles, excerpts, and keyword metadata
+- **Context Awareness**: Reads existing categories, tags, and authors to maintain consistency
+- **SEO Optimized**: Generates titles, excerpts, slugs, and keyword metadata
 - **Draft by Default**: Posts created as drafts for human review before publishing
+- **Queue Management**: Priority-based processing with status tracking
 
 ## How It Works
 
 ```
 ┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
 │  IDEA QUEUE     │     │     CLAUDE      │     │    SUPABASE     │
-│  (blog_ideas)   │ ──► │  (AI writer)    │ ──► │   (blog_posts)  │
+│  (blog_ideas)   │ ──► │   (AI Agent)    │ ──► │   (blog_posts)  │
 │                 │ ◄── │                 │ ◄── │                 │
 └─────────────────┘     └─────────────────┘     └─────────────────┘
 
 Autonomous Flow:
-1. Claude gets next idea from queue
+1. Claude gets next idea from queue (by priority)
 2. Claims the idea (marks as in_progress)
-3. Reads existing categories, tags, authors
-4. Writes complete blog post with content blocks
+3. Reads existing categories, tags, authors from your database
+4. Writes complete blog post with structured content blocks
 5. Saves to Supabase as draft
 6. Links relevant tags
 7. Marks idea as completed
@@ -34,7 +48,6 @@ Autonomous Flow:
 ### 1. Install Dependencies
 
 ```bash
-cd blog-generator
 pip install -r requirements.txt
 ```
 
@@ -49,22 +62,36 @@ Edit `.env` with your values:
 ANTHROPIC_API_KEY=sk-ant-xxxxx
 SUPABASE_URL=https://xxxxx.supabase.co
 SUPABASE_SERVICE_KEY=eyxxxxx
-DEFAULT_AUTHOR_SLUG=clutchcaddie-team
+DEFAULT_AUTHOR_SLUG=your-author-slug
 ```
 
-### 3. Set Up the Ideas Queue (One-Time)
+### 3. Set Up Your Database
 
-Run the SQL in `schema/blog_ideas.sql` in your Supabase SQL editor to create the `blog_ideas` table.
+You'll need these tables in Supabase:
 
-### 4. Add Ideas to the Queue
+- `blog_posts` - Stores the generated posts
+- `blog_categories` - Content categories
+- `blog_tags` - Tags for posts
+- `blog_authors` - Author profiles
+- `blog_ideas` - The generation queue (see `schema/blog_ideas.sql`)
+
+Run the SQL in `schema/blog_ideas.sql` to create the ideas queue table.
+
+### 4. Customize for Your Schema
+
+1. **Edit `tools/write_tools.py`** - Update the `create_blog_post` function to match your `blog_posts` table columns
+2. **Edit `tools/query_tools.py`** - Update queries to match your table structures
+3. **Edit `prompts/system_prompt.md`** - Define your content block types and their schemas
+
+### 5. Add Ideas to the Queue
 
 ```sql
 INSERT INTO blog_ideas (topic, description, priority, target_category_slug) VALUES
-  ('How to Fix Your Slice', 'Cover grip, swing path, and 3 drills', 90, 'instruction'),
-  ('Best Putting Drills', 'Distance control and alignment', 85, 'practice');
+  ('Your Topic Here', 'Detailed guidance for the AI', 90, 'your-category'),
+  ('Another Topic', 'More details', 85, 'another-category');
 ```
 
-### 5. Run the Generator
+### 6. Run the Generator
 
 ```bash
 # Process ideas from the queue (autonomous mode)
@@ -74,68 +101,52 @@ python generator.py --autonomous
 python generator.py --autonomous --count 5
 
 # Or generate a specific topic (manual mode)
-python generator.py "How to improve your short game"
+python generator.py "Your topic here"
 ```
-
-## Usage Modes
-
-### Autonomous Mode (Recommended for Automation)
-
-Process ideas from the `blog_ideas` queue:
-
-```bash
-# Process one idea
-python generator.py --autonomous
-
-# Process up to 5 ideas
-python generator.py --autonomous --count 5 --verbose
-
-# Check queue status
-python generator.py --status
-```
-
-### Manual Mode
-
-Generate a post about a specific topic:
-
-```bash
-python generator.py "Complete guide to golf club fitting"
-python generator.py "Best warm-up routine" --verbose
-```
-
-### Batch Mode
-
-Generate from a file of topics:
-
-```bash
-python generator.py --batch topics.txt
-```
-
-`topics.txt`:
-```
-How to read greens like a pro
-Best golf balls for high handicappers
-# Comments are ignored
-Mental game tips for pressure situations
-```
-
-### Interactive Mode
-
-```bash
-python generator.py --interactive
-```
-
-Commands in interactive mode:
-- Type a topic to generate a post
-- `status` - Show queue status
-- `auto` - Process one idea from queue
-- `quit` - Exit
 
 ## Content Block System
 
-Posts are stored as JSON arrays of content blocks, not HTML. The generator creates properly structured blocks that your website renders.
+Posts are stored as JSON arrays of content blocks. **You must build a frontend that renders these blocks.**
 
-### Available Block Types
+### Example Post Structure
+
+```json
+{
+  "title": "How to Get Started",
+  "slug": "how-to-get-started",
+  "excerpt": "A beginner's guide...",
+  "content_blocks": [
+    {
+      "id": "intro-1",
+      "type": "paragraph",
+      "data": {
+        "text": "Welcome to this guide..."
+      }
+    },
+    {
+      "id": "heading-1",
+      "type": "heading",
+      "data": {
+        "level": 2,
+        "text": "Getting Started"
+      }
+    },
+    {
+      "id": "tip-1",
+      "type": "callout",
+      "data": {
+        "style": "tip",
+        "title": "Pro Tip",
+        "text": "Start with the basics."
+      }
+    }
+  ]
+}
+```
+
+### Default Block Types
+
+The included system prompt defines these block types (customize as needed):
 
 | Type | Description |
 |------|-------------|
@@ -158,37 +169,98 @@ Posts are stored as JSON arrays of content blocks, not HTML. The generator creat
 | `code` | Code snippets |
 | `embed` | Social media embeds |
 
-### Example Content Block
+### Adapting Block Types
 
-```json
-{
-  "id": "tip-1",
-  "type": "callout",
-  "data": {
-    "style": "tip",
-    "title": "Pro Tip",
-    "text": "Check your grip first - it's the fastest fix for a slice."
-  }
-}
+To use different block types:
+
+1. Edit `prompts/system_prompt.md` to define your block schemas
+2. Build corresponding React/Vue/etc. components to render each type
+3. The AI will generate content using whatever block types you define
+
+**Example: Simplified blocks for a basic blog**
+
+If you only need paragraphs, headings, and lists, simplify the system prompt:
+
+```markdown
+## Content Blocks
+
+Generate content using these block types only:
+
+### paragraph
+{ "id": "string", "type": "paragraph", "data": { "text": "string" } }
+
+### heading
+{ "id": "string", "type": "heading", "data": { "level": 2|3|4, "text": "string" } }
+
+### list
+{ "id": "string", "type": "list", "data": { "style": "ordered|unordered", "items": ["string"] } }
 ```
 
-## Blog Ideas Queue
+## Usage Modes
 
-The `blog_ideas` table stores topics for autonomous generation.
+### Autonomous Mode (Recommended)
 
-### Schema
+Process ideas from the queue:
 
-| Column | Description |
-|--------|-------------|
-| `id` | UUID primary key |
-| `topic` | The main topic (required) |
-| `description` | Detailed guidance for the AI |
-| `notes` | Additional notes |
-| `priority` | 0-100, higher = processed first |
-| `target_category_slug` | Suggested category |
-| `suggested_tags` | Array of suggested tag slugs |
-| `status` | pending, in_progress, completed, failed, skipped |
-| `blog_post_id` | Link to created post (when completed) |
+```bash
+python generator.py --autonomous              # Process one idea
+python generator.py --autonomous --count 5    # Process up to 5
+python generator.py --status                  # Check queue status
+```
+
+### Manual Mode
+
+Generate a single post:
+
+```bash
+python generator.py "Your topic here"
+python generator.py "Another topic" --verbose
+```
+
+### Batch Mode
+
+Generate from a file:
+
+```bash
+python generator.py --batch topics.txt
+```
+
+### Interactive Mode
+
+```bash
+python generator.py --interactive
+```
+
+## Database Setup
+
+### Required Tables
+
+Your Supabase database needs these tables (adapt to your schema):
+
+**blog_posts**
+```sql
+CREATE TABLE blog_posts (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  title TEXT NOT NULL,
+  slug TEXT UNIQUE NOT NULL,
+  excerpt TEXT,
+  content_blocks JSONB NOT NULL DEFAULT '[]',
+  featured_image TEXT,
+  category_id UUID REFERENCES blog_categories(id),
+  author_id UUID REFERENCES blog_authors(id),
+  status TEXT DEFAULT 'draft',
+  seo_title TEXT,
+  seo_description TEXT,
+  seo_keywords TEXT[],
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  published_at TIMESTAMPTZ
+);
+```
+
+**blog_ideas** (for the queue)
+
+See `schema/blog_ideas.sql` for the complete schema.
 
 ### Managing the Queue
 
@@ -202,12 +274,6 @@ SELECT topic, priority FROM blog_ideas
 WHERE status = 'pending'
 ORDER BY priority DESC;
 
--- View completed ideas with their posts
-SELECT bi.topic, bp.title, bp.slug
-FROM blog_ideas bi
-JOIN blog_posts bp ON bi.blog_post_id = bp.id
-WHERE bi.status = 'completed';
-
 -- Retry a failed idea
 UPDATE blog_ideas
 SET status = 'pending', error_message = NULL
@@ -217,21 +283,19 @@ WHERE id = 'uuid-here';
 ## Project Structure
 
 ```
-blog-generator/
 ├── generator.py              # Main entry point
-├── config.py                 # Configuration
-├── requirements.txt          # Dependencies
+├── config.py                 # Configuration loader
+├── requirements.txt          # Python dependencies
 ├── .env.example              # Environment template
 ├── tools/
 │   ├── __init__.py
-│   ├── query_tools.py        # Read from Supabase
-│   ├── write_tools.py        # Write to Supabase
+│   ├── query_tools.py        # Read from Supabase (customize for your schema)
+│   ├── write_tools.py        # Write to Supabase (customize for your schema)
 │   └── idea_tools.py         # Queue management
 ├── prompts/
-│   └── system_prompt.md      # Claude instructions
-├── schema/
-│   └── blog_ideas.sql        # Queue table schema
-└── README.md
+│   └── system_prompt.md      # Claude instructions (customize block types here)
+└── schema/
+    └── blog_ideas.sql        # Queue table schema
 ```
 
 ## Automation
@@ -239,7 +303,6 @@ blog-generator/
 ### Cron Job
 
 ```bash
-# Run every day at 9am, process 3 ideas
 0 9 * * * cd /path/to/blog-generator && python generator.py --autonomous --count 3 >> /var/log/blog-gen.log 2>&1
 ```
 
@@ -258,21 +321,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-
       - name: Install dependencies
-        run: pip install -r blog-generator/requirements.txt
-
+        run: pip install -r requirements.txt
       - name: Process blog queue
-        working-directory: blog-generator
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
-          DEFAULT_AUTHOR_SLUG: clutchcaddie-team
+          DEFAULT_AUTHOR_SLUG: your-author-slug
         run: python generator.py --autonomous --count 3 --verbose
 ```
 
@@ -280,13 +339,20 @@ jobs:
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `ANTHROPIC_API_KEY` | Yes | - | Anthropic API key |
-| `SUPABASE_URL` | Yes | - | Supabase project URL |
+| `ANTHROPIC_API_KEY` | Yes | - | Your Anthropic API key |
+| `SUPABASE_URL` | Yes | - | Your Supabase project URL |
 | `SUPABASE_SERVICE_KEY` | Yes | - | Supabase service role key |
-| `DEFAULT_AUTHOR_SLUG` | Yes | - | Author for AI posts |
-| `CLAUDE_MODEL` | No | `claude-sonnet-4-20250514` | Model to use |
-| `MAX_TURNS` | No | `15` | Max tool iterations |
-| `DEFAULT_STATUS` | No | `draft` | Post status |
+| `DEFAULT_AUTHOR_SLUG` | Yes | - | Author slug for generated posts |
+| `CLAUDE_MODEL` | No | `claude-sonnet-4-20250514` | Claude model to use |
+| `MAX_TURNS` | No | `15` | Max agentic loop iterations |
+| `DEFAULT_STATUS` | No | `draft` | Default post status |
+
+## Cost Estimation
+
+Using Claude Sonnet:
+- ~20-50K tokens per blog post
+- ~$0.06-0.15 per post
+- 10 posts: ~$0.60-1.50
 
 ## Troubleshooting
 
@@ -299,21 +365,28 @@ pip install anthropic
 Ensure `.env` exists with all required values.
 
 ### Posts not appearing on website
-Posts are created as `draft`. Change status to `published` in Supabase.
+Posts are created as `draft` by default. Update the status to `published` in your database.
 
-### Queue status shows "in_progress" stuck
-An idea may be stuck if the generator crashed. Reset it:
+### Queue stuck on "in_progress"
+Reset stuck ideas:
 ```sql
 UPDATE blog_ideas SET status = 'pending' WHERE status = 'in_progress';
 ```
 
-## Cost Estimation
+## Contributing
 
-Using Claude Sonnet (recommended):
-- ~20-50K tokens per blog post
-- ~$0.06-0.15 per post
-- 10 posts: ~$0.60-1.50
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add some amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
 
 ## License
 
-Internal tool for ClutchCaddie.
+MIT License - see [LICENSE](LICENSE) for details.
+
+## Acknowledgments
+
+Built with [Claude](https://www.anthropic.com/claude) by Anthropic and [Supabase](https://supabase.com/).
