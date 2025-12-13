@@ -165,7 +165,8 @@ Essential variables (see [full reference](docs/configuration.md)):
 ## Cost Estimation
 
 Using Claude Sonnet 4.5 with prompt caching:
-- ~$0.15-0.25 per blog post
+- $0.30~ per blog post (without image)
+- $0.45~ per blog post (with image)
 - Prompt caching reduces costs by ~50%
 
 ## Contributing
