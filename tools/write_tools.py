@@ -19,6 +19,7 @@ from config import (
     DEFAULT_STATUS,
     ENABLE_SHOPIFY_SYNC,
     SHOPIFY_SYNC_ON_PUBLISH,
+    ENABLE_LINK_BUILDING,
 )
 
 
@@ -144,6 +145,16 @@ async def create_blog_post(args: dict[str, Any]) -> dict[str, Any]:
 
                 except Exception as sync_error:
                     result_text += f" | Shopify sync error: {str(sync_error)[:50]}"
+
+            # Auto-extract and save links if enabled
+            if ENABLE_LINK_BUILDING:
+                try:
+                    from tools.link_tools import save_post_links
+                    links_saved = await save_post_links(post_id, args["content"])
+                    if links_saved > 0:
+                        result_text += f" +{links_saved} links"
+                except Exception:
+                    pass  # Link tracking is non-critical, don't fail post creation
 
             return {
                 "content": [{

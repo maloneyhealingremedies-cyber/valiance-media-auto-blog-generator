@@ -13,6 +13,7 @@ This project serves as a **reference implementation**. It ships configured for g
 - **Content Block System** - Generates posts as structured JSON blocks (19 customizable block types)
 - **Autonomous Mode** - Process blog ideas from a queue without manual intervention
 - **AI Image Generation** - Optional featured images via Gemini
+- **Internal Link Building** - Automatic internal linking with URL validation
 - **Shopify Sync** - One-way sync to Shopify's blog CMS
 - **SEO Optimized** - Generates titles, excerpts, slugs, and keyword metadata
 - **Cost Optimized** - Prompt caching reduces token usage by ~50%
@@ -89,7 +90,19 @@ python generator.py "Your topic here"
 python generator.py --status
 
 # Backfill images for existing posts
-python generator.py --backfill-images
+python generator.py --backfill-images --count 10
+python generator.py --backfill-images-all
+
+# Backfill internal links for existing posts
+python generator.py --backfill-links --count 5
+python generator.py --backfill-links-all
+python generator.py --backfill-links-id <uuid>
+python generator.py --backfill-links-slug post-slug
+
+# Clean up internal links
+python generator.py --cleanup-links post-slug
+python generator.py --cleanup-links-id <uuid>
+python generator.py --cleanup-links-all
 ```
 
 ## Shopify Sync
@@ -119,6 +132,7 @@ See [Getting Started with Shopify](docs/setup/getting-started-with-shopify.md) f
 │   ├── write_tools.py        # Write to Supabase
 │   ├── idea_tools.py         # Queue management
 │   ├── image_tools.py        # AI image generation
+│   ├── link_tools.py         # Internal link building
 │   ├── shopify_tools.py      # Shopify API
 │   └── shopify_sync.py       # Shopify CLI handlers
 ├── prompts/
@@ -160,6 +174,7 @@ Essential variables (see [full reference](docs/configuration.md)):
 | `DEFAULT_AUTHOR_SLUG` | Yes | Author slug for posts |
 | `NICHE_PROMPT_PATH` | No | Path to niche prompt |
 | `ENABLE_IMAGE_GENERATION` | No | Enable Gemini images |
+| `ENABLE_LINK_BUILDING` | No | Enable internal link building |
 | `ENABLE_SHOPIFY_SYNC` | No | Enable Shopify sync |
 
 ## Cost Estimation

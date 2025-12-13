@@ -59,6 +59,30 @@ IMAGE_CONTEXT=kitchen, food photography, warm lighting, fresh ingredients
 IMAGE_CONTEXT=gym, fitness equipment, active lifestyle, energetic
 ```
 
+## Link Building
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `ENABLE_LINK_BUILDING` | `true` | Enable internal link suggestions and tracking |
+| `INTERNAL_LINK_PATTERN` | `/blog/{slug}` | URL pattern for internal links |
+| `LINK_VALIDATION_TIMEOUT` | `5000` | URL validation timeout in ms |
+| `LINK_SUGGESTIONS_LIMIT` | `8` | Max link suggestions to return |
+
+### URL Pattern Examples
+
+The `INTERNAL_LINK_PATTERN` supports `{slug}` and `{category}` placeholders:
+
+```env
+# Simple blog URL
+INTERNAL_LINK_PATTERN=/blog/{slug}
+
+# With category prefix
+INTERNAL_LINK_PATTERN=/blog/{category}/{slug}
+
+# Shopify style
+INTERNAL_LINK_PATTERN=/blogs/news/{slug}
+```
+
 ## Shopify Sync
 
 | Variable | Default | Description |
@@ -139,6 +163,10 @@ IMAGE_ASPECT_RATIO=16:9
 IMAGE_WIDTH=1920
 IMAGE_QUALITY=90
 SUPABASE_STORAGE_BUCKET=blog-images
+
+# Link Building
+ENABLE_LINK_BUILDING=true
+INTERNAL_LINK_PATTERN=/recipes/{slug}
 
 # Shopify
 ENABLE_SHOPIFY_SYNC=true

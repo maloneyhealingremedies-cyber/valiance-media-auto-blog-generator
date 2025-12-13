@@ -87,11 +87,66 @@ INSERT INTO blog_ideas (topic, description, priority) VALUES
 Generate featured images for posts that don't have them.
 
 ```bash
-python generator.py --backfill-images              # Process 1 post
+python generator.py --backfill-images              # Process 1 post (default)
 python generator.py --backfill-images --count 10   # Process up to 10 posts
+python generator.py --backfill-images-all          # Process ALL posts without images
 ```
 
 Requires `ENABLE_IMAGE_GENERATION=true` and `GEMINI_API_KEY` in `.env`.
+
+---
+
+## Link Building
+
+When `ENABLE_LINK_BUILDING=true`, the generator automatically:
+- **Internal links**: Added during post creation AND can be backfilled to existing posts
+- **External links**: Added during post creation only (requires topic research)
+
+### Backfill Internal Links
+Add internal links to posts that have fewer than recommended for your catalog size.
+
+```bash
+python generator.py --backfill-links                    # Process 1 post (default)
+python generator.py --backfill-links --count 5          # Process up to 5 posts
+python generator.py --backfill-links-all                # Process ALL posts that need links
+python generator.py --backfill-links-id <uuid>          # Process a specific post by ID
+python generator.py --backfill-links-slug post-slug     # Process a specific post by slug
+python generator.py --backfill-links --verbose          # Show detailed progress
+```
+
+The backfill process:
+1. Calculates realistic link targets based on catalog size (not just word count)
+2. Finds posts with fewer internal links than the adjusted target
+3. Identifies related posts and natural phrases to link
+4. Safely inserts links by wrapping exact phrases (no content modification)
+5. Validates all URLs before applying
+
+**Note:** Backfill only handles internal links. External links require topic research and are added during initial post creation.
+
+Requires `ENABLE_LINK_BUILDING=true` and the `blog_post_links` table.
+
+### Clean Up Internal Links
+Remove internal links from posts (e.g., to fix bad links before re-running backfill).
+
+```bash
+python generator.py --cleanup-links "post-slug"     # Clean up by slug
+python generator.py --cleanup-links-id "uuid"       # Clean up by post ID
+python generator.py --cleanup-links-all             # Clean up ALL posts (requires confirmation)
+```
+
+The cleanup process:
+1. Strips all internal `<a href="/...">` tags from post content
+2. Preserves the anchor text (link text remains, just not linked)
+3. Deletes matching records from the `blog_post_links` table
+
+**Typical workflow to fix bad links:**
+```bash
+# 1. Remove the bad links
+python generator.py --cleanup-links-all
+
+# 2. Re-run backfill with improved semantic matching
+python generator.py --backfill-links-all --verbose
+```
 
 ---
 
@@ -146,6 +201,7 @@ Key variables that affect CLI behavior:
 | `BLOGS_PER_RUN` | Default `--count` value (default: 1) |
 | `DEFAULT_STATUS` | Status for new posts (`draft`, `published`) |
 | `ENABLE_IMAGE_GENERATION` | Enables `--backfill-images` command |
+| `ENABLE_LINK_BUILDING` | Enables internal linking and `--backfill-links` |
 | `ENABLE_SHOPIFY_SYNC` | Enables all `--shopify-*` commands |
 
 See [configuration.md](../configuration.md) for full reference.

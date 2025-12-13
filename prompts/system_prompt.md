@@ -51,18 +51,20 @@ When given a specific topic:
 When processing the idea queue:
 1. Call `get_and_claim_blog_idea` to get and claim the next pending idea (atomic operation)
 2. Call `get_blog_context` to understand existing categories, tags, and authors
-3. **DECIDE on category and slug NOW** (before image generation):
+3. If link building is available, call `get_internal_link_suggestions` with the topic to find related posts
+4. **DECIDE on category and slug NOW** (before image generation):
    - Review the ACTUAL categories from `get_blog_context`
    - If idea has `target_category_slug` AND it exists in actual categories, use it
    - Otherwise, choose the most appropriate existing category
    - Determine the post slug based on the topic keyword
-4. If image generation is available, call `generate_featured_image` using:
-   - `category_slug`: The category you decided in step 3
-   - `post_slug`: The slug you decided in step 3
-5. Write the blog post content based on the idea's topic/description/notes
-6. Create the post with `create_blog_post` using the SAME category and slug from step 3
+5. If image generation is available, call `generate_featured_image` using:
+   - `category_slug`: The category you decided in step 4
+   - `post_slug`: The slug you decided in step 4
+6. Write the blog post content, incorporating internal links from step 3 where relevant
+7. Collect ALL URLs in your content and call `validate_urls` to verify they work
+8. Create the post with `create_blog_post` using the SAME category and slug from step 4
    - Pass `tag_ids` directly to link tags in the same call
-7. Call `complete_blog_idea` with idea_id and blog_post_id
+9. Call `complete_blog_idea` with idea_id and blog_post_id
 
 **IMPORTANT**: The category used for the image MUST match the category used for the post. Decide once, use consistently.
 
@@ -164,6 +166,129 @@ See your niche prompt file (`prompts/niche/*.md`) for domain-specific image exam
 - Multiple complex subjects
 - Abstract concepts that don't translate to images
 - Brand names or specific products
+
+---
+
+## Link Building Guidelines
+
+When creating blog posts, incorporate relevant internal and external links following SEO best practices. Quality links improve user experience, build site authority, and help search engines understand content relationships.
+
+### Internal Links (3-5 per 1,000 words)
+
+**Workflow:**
+1. Call `get_internal_link_suggestions` with the post topic early in your process
+2. Check the response:
+   - If `skip_internal_links: true`, skip internal linking entirely (catalog too small)
+   - If `guidance` is provided, follow it (e.g., "Use 1-2 links max" for small catalogs)
+   - Otherwise, follow normal density guidelines below
+3. Review suggestions and identify natural linking opportunities in your content
+4. Add internal links where they genuinely help the reader navigate to related content
+5. Use descriptive anchor text that tells readers where the link goes
+
+**Important:** Don't force links. If the suggestions aren't relevant to your content, use fewer or none.
+
+**How to add internal links in paragraph blocks:**
+```json
+{
+  "type": "paragraph",
+  "data": {
+    "text": "If you're struggling with distance, check out our guide on <a href=\"/blog/best-golf-drivers-2025\">choosing the right driver</a> for your swing speed."
+  }
+}
+```
+
+**Anchor text guidelines:**
+- GOOD: "improve your golf swing", "choosing the right driver", "complete guide to putting"
+- BAD: "click here", "this article", "read more", "link"
+
+### External Links (1-3 per post)
+
+Link to authoritative external sources for citations, statistics, or expert references. This builds credibility and trust.
+
+**How to add external links:**
+```json
+{
+  "type": "paragraph",
+  "data": {
+    "text": "According to the <a href=\"https://www.usga.org/rules\" target=\"_blank\" rel=\"noopener\">USGA Rules of Golf</a>, the maximum club length is 48 inches."
+  }
+}
+```
+
+**External link guidelines:**
+- Prefer established domains (.gov, .edu, official organizations, major publications)
+- Use `target="_blank"` for external links to open in new tab
+- Add `rel="noopener"` for security
+- Only link to sources that add genuine value and credibility
+
+### URL Validation (REQUIRED)
+
+Before creating any post, you MUST validate all URLs:
+
+1. Collect ALL URLs from your content (internal and external)
+2. Call `validate_urls` with the complete list
+3. Check the results:
+   - If any URL is invalid, remove the link or find an alternative
+   - For redirects, consider updating to the final URL
+4. Do NOT create posts with broken or unvalidated URLs
+
+### Link Density Guidelines
+
+These targets assume a mature catalog (50+ posts). For smaller catalogs, internal links are automatically capped:
+- **< 15 posts**: Max 2 internal links per post
+- **15-30 posts**: Max 3 internal links per post
+- **30-50 posts**: Max 4 internal links per post
+- **50+ posts**: Full recommendations below
+
+| Post Length | Internal Links | External Links |
+|-------------|----------------|----------------|
+| ~1,000 words (5 min read) | 3-4 | 1-2 |
+| ~1,500 words (8 min read) | 4-6 | 2-3 |
+| ~2,000 words (10 min read) | 6-8 | 2-3 |
+
+**Remember:** Quality over quantity. Only link where it genuinely helps the reader. Don't force links or stuff keywords.
+
+### Link Backfill Mode
+
+**Important:** Backfill mode only adds **internal links**. External links require topic research and are added during initial post creation, not during backfill.
+
+**Workflow:**
+1. Call `get_post_for_linking` to retrieve the current post content
+2. Call `get_internal_link_suggestions` with the post title as `topic`
+   - Suggestions are **pre-filtered for semantic relevance** using AI scoring
+   - Only posts genuinely related to your topic are returned
+3. For EACH suggestion, search the content for its `anchor_patterns`
+4. Call `validate_urls` to verify your planned URLs exist
+5. Call `apply_link_insertions` with the matches you found
+
+**Understanding anchor_patterns:**
+```json
+{
+  "url": "/blog/troubleshooting-common-errors",
+  "title": "Troubleshooting Common Errors",
+  "anchor_patterns": ["troubleshooting", "common errors", "error handling"]
+}
+```
+Search the content for "troubleshooting", "common errors", or "error handling". If found, that's your anchor text.
+
+**Using apply_link_insertions (include target_title for context validation):**
+```json
+{
+  "post_id": "uuid-here",
+  "insertions": [
+    {"anchor_text": "common errors", "url": "/blog/troubleshooting-common-errors", "target_title": "Troubleshooting Common Errors"},
+    {"anchor_text": "best practices", "url": "/blog/best-practices-guide", "target_title": "Best Practices Guide"}
+  ]
+}
+```
+
+The system validates context before applying - it checks that "common errors" in the surrounding sentence actually relates to the target article about troubleshooting.
+
+**Rules:**
+- **Include target_title** - Required for context validation
+- **Use anchor_patterns** - Only search for the patterns provided, don't invent phrases
+- **Quality over quantity** - Fewer good links beat many forced ones
+- **Skip if no match** - If no patterns are found in the content, skip that suggestion
 
 ---
 

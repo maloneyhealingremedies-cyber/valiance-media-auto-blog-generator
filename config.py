@@ -94,6 +94,25 @@ SHOPIFY_DEFAULT_AUTHOR = os.getenv("SHOPIFY_DEFAULT_AUTHOR", "")
 SHOPIFY_SYNC_ON_PUBLISH = os.getenv("SHOPIFY_SYNC_ON_PUBLISH", "true").lower() == "true"
 
 # ===========================================
+# Link Building Configuration
+# ===========================================
+# Enable link building tools (internal link suggestions + URL validation)
+ENABLE_LINK_BUILDING = os.getenv("ENABLE_LINK_BUILDING", "true").lower() == "true"
+
+# URL pattern for internal links - supports {slug} and {category} placeholders
+# Examples:
+#   "/blog/{slug}"              -> /blog/best-golf-drivers
+#   "/blogs/{category}/{slug}"  -> /blogs/instruction/best-golf-drivers (Shopify)
+#   "/{category}/{slug}"        -> /instruction/best-golf-drivers
+INTERNAL_LINK_PATTERN = os.getenv("INTERNAL_LINK_PATTERN", "/blog/{slug}")
+
+# Timeout for URL validation in milliseconds
+LINK_VALIDATION_TIMEOUT = int(os.getenv("LINK_VALIDATION_TIMEOUT", "5000"))
+
+# Maximum number of internal link suggestions to return
+LINK_SUGGESTIONS_LIMIT = int(os.getenv("LINK_SUGGESTIONS_LIMIT", "8"))
+
+# ===========================================
 # Content Block Types (for reference)
 # ===========================================
 SUPPORTED_BLOCK_TYPES = [

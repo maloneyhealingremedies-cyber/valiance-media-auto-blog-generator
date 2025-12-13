@@ -32,6 +32,19 @@ from .idea_tools import (
     IDEA_TOOLS,
 )
 
+from .link_tools import (
+    get_internal_link_suggestions,
+    validate_urls,
+    save_post_links,
+    get_posts_needing_links,
+    get_post_for_linking,
+    apply_link_insertions,
+    remove_internal_links_from_post,
+    cleanup_internal_links,
+    LINK_TOOLS,
+    BACKFILL_LINK_TOOLS,
+)
+
 __all__ = [
     # Query tools
     "get_blog_context",
@@ -54,4 +67,14 @@ __all__ = [
     "skip_blog_idea",
     "get_idea_queue_status",
     "IDEA_TOOLS",
+    # Link tools
+    "get_internal_link_suggestions",
+    "validate_urls",
+    "save_post_links",
+    "get_posts_needing_links",
+    "get_post_for_linking",
+    "apply_link_insertions",
+    "cleanup_internal_links",
+    "LINK_TOOLS",
+    "BACKFILL_LINK_TOOLS",
 ]

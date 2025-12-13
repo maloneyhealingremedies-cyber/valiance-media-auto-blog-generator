@@ -6,14 +6,17 @@ This script uses Claude to autonomously generate blog posts.
 It can operate in several modes:
 1. Manual mode: Generate a post about a specific topic
 2. Autonomous mode: Process posts from a queue of blog ideas
-3. Backfill mode: Generate images for posts missing them
+3. Backfill images: Generate images for posts missing them
+4. Backfill links: Add internal links to posts with fewer than recommended
 
 Usage:
     python generator.py "topic to write about"          # Manual mode
     python generator.py --autonomous                    # Process ideas from queue
     python generator.py --autonomous --count 5          # Process up to 5 ideas
-    python generator.py --backfill-images               # Generate missing images
     python generator.py --backfill-images --count 10    # Backfill up to 10 images
+    python generator.py --backfill-images-all           # Backfill ALL images
+    python generator.py --backfill-links --count 5      # Backfill up to 5 posts
+    python generator.py --backfill-links-all            # Backfill ALL links
     python generator.py --batch topics.txt              # Batch from file
     python generator.py --interactive                   # Interactive mode
     python generator.py --status                        # Show queue status
@@ -21,7 +24,8 @@ Usage:
 Examples:
     python generator.py "How to fix a slice"
     python generator.py --autonomous --verbose
-    python generator.py --backfill-images --count 5
+    python generator.py --backfill-images-all
+    python generator.py --backfill-links-all
 """
 
 import asyncio
@@ -47,11 +51,13 @@ from config import (
     BLOGS_PER_RUN,
     NICHE_PROMPT_PATH,
     ENABLE_SHOPIFY_SYNC,
+    ENABLE_LINK_BUILDING,
 )
 from tools.query_tools import QUERY_TOOLS
 from tools.write_tools import WRITE_TOOLS
 from tools.idea_tools import IDEA_TOOLS
 from tools.image_tools import IMAGE_TOOLS
+from tools.link_tools import LINK_TOOLS, BACKFILL_LINK_TOOLS
 
 
 async def health_check(verbose: bool = False) -> dict:
@@ -99,6 +105,12 @@ async def health_check(verbose: bool = False) -> dict:
         elif verbose:
             print("✓ Shopify credentials configured")
 
+    # Check Link Building config (if enabled)
+    if ENABLE_LINK_BUILDING:
+        from config import INTERNAL_LINK_PATTERN, LINK_VALIDATION_TIMEOUT
+        if verbose:
+            print(f"✓ Link building enabled (pattern: {INTERNAL_LINK_PATTERN})")
+
     if errors:
         return {"success": False, "errors": errors}
 
@@ -144,14 +156,18 @@ def get_all_tools(include_idea_tools: bool = True, verbose: bool = False) -> lis
             print("✓ Image generation enabled")
     elif verbose:
         print("✗ Image generation disabled (set ENABLE_IMAGE_GENERATION=true to enable)")
+    if ENABLE_LINK_BUILDING:
+        tools = tools + LINK_TOOLS
+        if verbose:
+            print("✓ Link building enabled")
+    elif verbose:
+        print("✗ Link building disabled (set ENABLE_LINK_BUILDING=true to enable)")
     return tools
 
 
-async def execute_tool(tool_name: str, tool_input: dict, include_idea_tools: bool = True) -> dict:
+async def execute_tool(tool_name: str, tool_input: dict, tool_list: list) -> dict:
     """Execute a tool by name and return the result"""
-    all_tools = get_all_tools(include_idea_tools)
-
-    for tool in all_tools:
+    for tool in tool_list:
         if tool["name"] == tool_name:
             return await tool["function"](tool_input)
 
@@ -181,7 +197,8 @@ async def release_claimed_idea(idea_id: str, error_message: str, verbose: bool =
 async def run_agent(
     initial_message: str,
     verbose: bool = False,
-    include_idea_tools: bool = True
+    include_idea_tools: bool = True,
+    tools_override: list = None
 ) -> dict:
     """
     Run the Claude agent with the given initial message.
@@ -196,6 +213,7 @@ async def run_agent(
         initial_message: The instruction for Claude
         verbose: Whether to print progress
         include_idea_tools: Whether to include idea queue tools
+        tools_override: Optional list of tools to use instead of default
 
     Returns:
         dict with success status and details
@@ -211,8 +229,10 @@ async def run_agent(
     system_prompt = load_system_prompt(verbose=verbose)
 
     # Build tool definitions for API
+    # Use tools_override if provided, otherwise use default tools
+    tool_source = tools_override if tools_override else get_all_tools(include_idea_tools, verbose=verbose)
     tools = []
-    for tool in get_all_tools(include_idea_tools, verbose=verbose):
+    for tool in tool_source:
         tools.append({
             "name": tool["name"],
             "description": tool["description"],
@@ -285,7 +305,7 @@ async def run_agent(
                             else:
                                 print(f"Input: (blog post content - {len(json.dumps(tool_input))} chars)")
 
-                        result = await execute_tool(tool_name, tool_input, include_idea_tools)
+                        result = await execute_tool(tool_name, tool_input, tool_source)
 
                         result_text = ""
                         is_error = result.get("is_error", False)
@@ -578,6 +598,273 @@ async def backfill_images(count: int = 1, verbose: bool = False) -> list:
     return results
 
 
+async def backfill_links(count: int = 5, verbose: bool = False) -> list:
+    """
+    Add internal links to posts that have fewer than recommended.
+    Uses Claude to intelligently add links without breaking existing content.
+
+    Args:
+        count: Maximum number of posts to process
+        verbose: Print detailed progress
+
+    Returns:
+        List of results for each processed post
+    """
+    from tools.link_tools import get_posts_needing_links
+
+    if not ENABLE_LINK_BUILDING:
+        print("Link building is disabled. Set ENABLE_LINK_BUILDING=true")
+        return []
+
+    # Get posts that need more links
+    result = await get_posts_needing_links({"limit": count})
+    result_text = result.get("content", [{}])[0].get("text", "{}")
+
+    import json
+    try:
+        data = json.loads(result_text)
+    except json.JSONDecodeError:
+        print(f"Error parsing posts: {result_text}")
+        return []
+
+    posts = data.get("posts", [])
+    catalog_size = data.get("catalog_size", 0)
+    catalog_note = data.get("note")
+
+    if not posts:
+        message = data.get("message", "No posts need link improvements")
+        print(message)
+        return []
+
+    print(f"Found {len(posts)} post(s) needing link improvements")
+    if catalog_note:
+        print(f"Note: {catalog_note}")
+
+    results = []
+    for i, post in enumerate(posts, 1):
+        print(f"\n{'='*50}")
+        print(f"[{i}/{len(posts)}] {post['title']}")
+        print(f"Current: {post['current_links']} links | Target: {post['recommended']} | To add: {post['deficit']}")
+        print("="*50)
+
+        # Build the agent prompt for this post
+        # The recommended/deficit are already adjusted for catalog size
+        links_to_add = post['deficit']
+        prompt = f"""You are enhancing internal links for an existing blog post.
+
+POST TO ENHANCE:
+- ID: {post['id']}
+- Title: {post['title']}
+- Links to add: up to {links_to_add}
+
+WORKFLOW:
+1. Call `get_post_for_linking` with post_id "{post['id']}" to get the content
+2. Call `get_internal_link_suggestions` with:
+   - topic: "{post['title']}"
+   - exclude_slug: the post's slug
+
+The suggestions are PRE-FILTERED for semantic relevance. Each includes `anchor_patterns` to search for:
+```
+{{"url": "/blog/related-topic", "title": "Related Topic Guide", "anchor_patterns": ["related topic", "topic guide"]}}
+```
+
+3. For EACH suggestion, search the content for its anchor_patterns (case-insensitive)
+4. Call `validate_urls` with your planned URLs
+5. Call `apply_link_insertions` - IMPORTANT: include `target_title` for context validation:
+```
+{{"insertions": [{{"anchor_text": "found phrase", "url": "/blog/slug", "target_title": "Article Title"}}]}}
+```
+
+The system will verify the anchor text is used appropriately in context before applying the link.
+
+RULES:
+- Only link phrases that naturally appear in the content
+- Use the `anchor_patterns` provided - don't invent random phrases
+- Always include `target_title` in each insertion (from the suggestion's title field)
+- If a pattern isn't found, skip that suggestion
+- If no patterns match, respond: "Skipping - no matching phrases found"
+
+The anchor text should tell the reader what they'll find when they click."""
+
+        # Run the agent with backfill tools
+        agent_result = await run_agent(
+            initial_message=prompt,
+            verbose=verbose,
+            include_idea_tools=False,
+            tools_override=BACKFILL_LINK_TOOLS
+        )
+
+        if agent_result.get("success"):
+            # Try to extract link count from the message
+            message = agent_result.get("message", "")
+            if "applied" in message.lower():
+                print(f"SUCCESS - {message[:100]}")
+            else:
+                print(f"SUCCESS - Links enhanced")
+            results.append({"post_id": post['id'], "success": True, "message": message})
+        else:
+            error = agent_result.get("error", agent_result.get("message", "Unknown error"))
+            if "skip" in str(error).lower():
+                print(f"SKIPPED - {error[:80]}")
+                results.append({"post_id": post['id'], "success": True, "skipped": True})
+            else:
+                print(f"FAILED - {error[:80]}")
+                results.append({"post_id": post['id'], "success": False, "error": error})
+
+    # Summary
+    print("\n" + "="*50)
+    print("LINK BACKFILL SUMMARY")
+    print("="*50)
+    enhanced = sum(1 for r in results if r.get("success") and not r.get("skipped"))
+    skipped = sum(1 for r in results if r.get("skipped"))
+    failed = sum(1 for r in results if not r.get("success"))
+    print(f"Processed: {len(results)}")
+    print(f"Enhanced: {enhanced}")
+    if skipped:
+        print(f"Skipped: {skipped}")
+    if failed:
+        print(f"Failed: {failed}")
+
+    return results
+
+
+async def backfill_links_single(
+    post_id: str = None,
+    post_slug: str = None,
+    verbose: bool = False
+) -> dict:
+    """
+    Add internal links to a specific post by ID or slug.
+
+    Args:
+        post_id: Post UUID (optional if post_slug provided)
+        post_slug: Post slug (optional if post_id provided)
+        verbose: Print detailed progress
+
+    Returns:
+        Result dict with success status
+    """
+    import aiohttp
+    from config import SUPABASE_URL, get_supabase_headers
+
+    if not ENABLE_LINK_BUILDING:
+        print("Link building is disabled. Set ENABLE_LINK_BUILDING=true")
+        return {"success": False, "error": "Link building disabled"}
+
+    if not post_id and not post_slug:
+        print("Error: Must provide either post_id or post_slug")
+        return {"success": False, "error": "No post identifier provided"}
+
+    # Fetch the post
+    async with aiohttp.ClientSession() as session:
+        headers = get_supabase_headers()
+
+        if post_id:
+            query = f"id=eq.{post_id}"
+        else:
+            query = f"slug=eq.{post_slug}"
+
+        async with session.get(
+            f"{SUPABASE_URL}/rest/v1/blog_posts?{query}&select=id,slug,title,status",
+            headers=headers
+        ) as resp:
+            if resp.status != 200:
+                print(f"Error fetching post: HTTP {resp.status}")
+                return {"success": False, "error": "Failed to fetch post"}
+            posts = await resp.json()
+
+        if not posts:
+            print(f"Post not found")
+            return {"success": False, "error": "Post not found"}
+
+        post = posts[0]
+
+        # Count current internal links
+        async with session.get(
+            f"{SUPABASE_URL}/rest/v1/blog_post_links?post_id=eq.{post['id']}&link_type=eq.internal&select=id",
+            headers={**headers, "Prefer": "count=exact"}
+        ) as resp:
+            content_range = resp.headers.get("content-range", "")
+            current_links = 0
+            if "/" in content_range:
+                try:
+                    total = content_range.split("/")[1]
+                    current_links = int(total) if total != "*" else 0
+                except (ValueError, IndexError):
+                    pass
+
+    # Build post info for the backfill prompt
+    post_info = {
+        "id": post["id"],
+        "title": post["title"],
+        "slug": post["slug"],
+        "current_links": current_links,
+        "recommended": 5,  # Default target
+        "deficit": max(0, 5 - current_links)
+    }
+
+    print(f"\n{'='*50}")
+    print(f"Post: {post_info['title']}")
+    print(f"Current: {post_info['current_links']} links | Target: {post_info['recommended']} | To add: {post_info['deficit']}")
+    print("="*50)
+
+    if post_info['deficit'] == 0:
+        print("Post already has enough internal links.")
+        return {"success": True, "message": "Already has enough links"}
+
+    # Build the agent prompt
+    links_to_add = post_info['deficit']
+    prompt = f"""You are enhancing internal links for an existing blog post.
+
+POST TO ENHANCE:
+- ID: {post_info['id']}
+- Title: {post_info['title']}
+- Links to add: up to {links_to_add}
+
+WORKFLOW:
+1. Call `get_post_for_linking` with post_id "{post_info['id']}" to get the content
+2. Call `get_internal_link_suggestions` with:
+   - topic: "{post_info['title']}"
+   - exclude_slug: "{post_info['slug']}"
+
+The suggestions are PRE-FILTERED for semantic relevance. Each includes `anchor_patterns` to search for.
+
+3. For EACH suggestion, search the content for its anchor_patterns (case-insensitive)
+4. Call `validate_urls` with your planned URLs
+5. Call `apply_link_insertions` - IMPORTANT: include `target_title` for context validation
+
+RULES:
+- Only link phrases that naturally appear in the content
+- Use the `anchor_patterns` provided - don't invent random phrases
+- Always include `target_title` in each insertion
+- If no patterns match, respond: "Skipping - no matching phrases found"
+"""
+
+    # Run the agent with backfill tools
+    agent_result = await run_agent(
+        initial_message=prompt,
+        verbose=verbose,
+        include_idea_tools=False,
+        tools_override=BACKFILL_LINK_TOOLS
+    )
+
+    if agent_result.get("success"):
+        message = agent_result.get("message", "")
+        if "applied" in message.lower():
+            print(f"SUCCESS - {message[:100]}")
+        else:
+            print(f"SUCCESS - Links enhanced")
+        return {"success": True, "message": message}
+    else:
+        error = agent_result.get("error", agent_result.get("message", "Unknown error"))
+        if "skip" in str(error).lower():
+            print(f"SKIPPED - {error[:80]}")
+            return {"success": True, "skipped": True}
+        else:
+            print(f"FAILED - {error[:80]}")
+            return {"success": False, "error": error}
+
+
 async def generate_batch(topics_file: str, verbose: bool = False) -> list:
     """Generate multiple blog posts from a file of topics"""
     with open(topics_file, "r", encoding="utf-8") as f:
@@ -655,12 +942,14 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Modes:
-  MANUAL:      python generator.py "How to fix your slice"
-  AUTONOMOUS:  python generator.py --autonomous
-  BACKFILL:    python generator.py --backfill-images
-  BATCH:       python generator.py --batch topics.txt
-  INTERACTIVE: python generator.py --interactive
-  STATUS:      python generator.py --status
+  MANUAL:         python generator.py "How to fix your slice"
+  AUTONOMOUS:     python generator.py --autonomous
+  BACKFILL IMG:   python generator.py --backfill-images
+  BACKFILL LINKS: python generator.py --backfill-links
+  CLEANUP LINKS:  python generator.py --cleanup-links-all
+  BATCH:          python generator.py --batch topics.txt
+  INTERACTIVE:    python generator.py --interactive
+  STATUS:         python generator.py --status
 
 Examples:
   # Generate one post about a specific topic
@@ -674,6 +963,16 @@ Examples:
 
   # Generate images for posts missing them
   python generator.py --backfill-images --count 10
+  python generator.py --backfill-images-all
+
+  # Add internal links to posts
+  python generator.py --backfill-links --count 5
+  python generator.py --backfill-links-all
+
+  # Remove bad internal links (then re-run backfill)
+  python generator.py --cleanup-links post-slug
+  python generator.py --cleanup-links-id post-uuid
+  python generator.py --cleanup-links-all
 
   # Check queue status
   python generator.py --status
@@ -714,7 +1013,51 @@ Examples:
     parser.add_argument(
         "--backfill-images",
         action="store_true",
-        help="Generate images for posts that don't have them"
+        help="Generate images for posts that don't have them (use --count to limit)"
+    )
+    parser.add_argument(
+        "--backfill-images-all",
+        action="store_true",
+        help="Generate images for ALL posts that don't have them"
+    )
+    parser.add_argument(
+        "--backfill-links",
+        action="store_true",
+        help="Add internal links to posts that have fewer than recommended (use --count to limit)"
+    )
+    parser.add_argument(
+        "--backfill-links-all",
+        action="store_true",
+        help="Add internal links to ALL posts that need them"
+    )
+    parser.add_argument(
+        "--backfill-links-id",
+        type=str,
+        metavar="UUID",
+        help="Add internal links to a specific post by ID"
+    )
+    parser.add_argument(
+        "--backfill-links-slug",
+        type=str,
+        metavar="SLUG",
+        help="Add internal links to a specific post by slug"
+    )
+    parser.add_argument(
+        "--cleanup-links",
+        type=str,
+        metavar="SLUG",
+        help="Remove internal links from a post by slug"
+    )
+    parser.add_argument(
+        "--cleanup-links-id",
+        type=str,
+        metavar="UUID",
+        help="Remove internal links from a post by ID"
+    )
+    parser.add_argument(
+        "--cleanup-links-all",
+        action="store_true",
+        help="Remove internal links from ALL published posts"
     )
     parser.add_argument(
         "--verbose", "-v",
@@ -876,6 +1219,56 @@ Examples:
     elif args.backfill_images:
         print(f"Backfill Mode: Generating images for up to {args.count} post(s)")
         asyncio.run(backfill_images(count=args.count, verbose=args.verbose))
+
+    elif args.backfill_images_all:
+        print("Backfill Mode: Generating images for ALL posts without them")
+        asyncio.run(backfill_images(count=1000, verbose=args.verbose))
+
+    elif args.backfill_links:
+        print(f"Backfill Mode: Adding links to up to {args.count} post(s)")
+        asyncio.run(backfill_links(count=args.count, verbose=args.verbose))
+
+    elif args.backfill_links_all:
+        print("Backfill Mode: Adding links to ALL posts that need them")
+        asyncio.run(backfill_links(count=1000, verbose=args.verbose))
+
+    elif args.backfill_links_id:
+        print(f"Backfill Mode: Adding links to post ID '{args.backfill_links_id}'")
+        asyncio.run(backfill_links_single(post_id=args.backfill_links_id, verbose=args.verbose))
+
+    elif args.backfill_links_slug:
+        print(f"Backfill Mode: Adding links to post '{args.backfill_links_slug}'")
+        asyncio.run(backfill_links_single(post_slug=args.backfill_links_slug, verbose=args.verbose))
+
+    elif args.cleanup_links_all:
+        print("Cleanup Mode: Removing internal links from ALL published posts")
+        print("This will strip all internal <a> tags and preserve the anchor text.")
+        confirm = input("Are you sure? Type 'yes' to continue: ")
+        if confirm.lower() != 'yes':
+            print("Cancelled.")
+            sys.exit(0)
+        from tools.link_tools import cleanup_internal_links
+        results = asyncio.run(cleanup_internal_links(all_posts=True))
+        total_removed = sum(r.get("removed", 0) for r in results if r.get("success"))
+        print(f"\nCleaned {len(results)} posts, removed {total_removed} internal links")
+
+    elif args.cleanup_links_id:
+        from tools.link_tools import remove_internal_links_from_post
+        print(f"Cleanup Mode: Removing internal links from post ID '{args.cleanup_links_id}'")
+        result = asyncio.run(remove_internal_links_from_post(args.cleanup_links_id))
+        if result.get("success"):
+            print(f"Removed {result.get('removed', 0)} internal links from {result.get('post_slug', 'post')}")
+        else:
+            print(f"Error: {result.get('error', 'Unknown error')}")
+
+    elif args.cleanup_links:
+        from tools.link_tools import cleanup_internal_links
+        print(f"Cleanup Mode: Removing internal links from '{args.cleanup_links}'")
+        results = asyncio.run(cleanup_internal_links(post_slugs=[args.cleanup_links]))
+        if results and results[0].get("success"):
+            print(f"Removed {results[0].get('removed', 0)} internal links")
+        else:
+            print(f"Error: {results[0].get('error', 'Unknown error')}")
 
     elif args.interactive:
         asyncio.run(interactive_mode(verbose=args.verbose))

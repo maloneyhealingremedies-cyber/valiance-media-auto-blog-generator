@@ -14,6 +14,7 @@ The generator requires these tables:
 | `blog_post_tags` | Many-to-many relationship |
 | `blog_authors` | Author profiles |
 | `blog_ideas` | Generation queue |
+| `blog_post_links` | Link tracking (optional) |
 
 ## Quick Setup
 
@@ -31,6 +32,9 @@ schema/storage_bucket.sql
 
 # 4. (Optional) Enable Shopify sync
 schema/shopify_sync.sql
+
+# 5. (Optional) Enable link tracking
+schema/blog_link_tracking.sql
 ```
 
 ## Table Schemas
@@ -144,6 +148,31 @@ CREATE TABLE blog_ideas (
 
   CONSTRAINT status_check CHECK (status IN ('pending', 'in_progress', 'completed', 'failed'))
 );
+```
+
+### blog_post_links (Link Tracking)
+
+Tracks all internal and external links for analytics and backfill operations.
+
+```sql
+CREATE TABLE blog_post_links (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  post_id UUID NOT NULL REFERENCES blog_posts(id) ON DELETE CASCADE,
+  url TEXT NOT NULL,
+  anchor_text TEXT,
+  link_type TEXT NOT NULL,  -- 'internal' or 'external'
+  linked_post_id UUID REFERENCES blog_posts(id),  -- For internal links
+  domain TEXT,              -- For external links
+  opens_new_tab BOOLEAN DEFAULT false,
+  is_nofollow BOOLEAN DEFAULT false,
+  is_valid BOOLEAN DEFAULT true,
+  last_validated_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Index for efficient queries
+CREATE INDEX idx_post_links_post ON blog_post_links(post_id);
+CREATE INDEX idx_post_links_type ON blog_post_links(link_type);
 ```
 
 ## Managing the Queue
