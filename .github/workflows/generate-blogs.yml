@@ -11,9 +11,8 @@ on:
   workflow_dispatch:
     inputs:
       count:
-        description: 'Number of blog posts to generate'
+        description: 'Number of blog posts to generate (overrides BLOGS_PER_RUN)'
         required: false
-        default: '1'
         type: string
 
 env:
@@ -41,17 +40,40 @@ jobs:
 
       - name: Check queue status
         env:
+          # ===========================================
+          # Required (Secrets)
+          # ===========================================
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+
+          # ===========================================
+          # Blog Configuration (Variables)
+          # ===========================================
           DEFAULT_AUTHOR_SLUG: ${{ vars.DEFAULT_AUTHOR_SLUG }}
           DEFAULT_STATUS: ${{ vars.DEFAULT_STATUS }}
-          CLAUDE_MODEL: ${{ vars.CLAUDE_MODEL }}
-          MAX_TURNS: ${{ vars.MAX_TURNS }}
-          # Category settings
+
+          # ===========================================
+          # Category Configuration
+          # ===========================================
           ALLOW_NEW_CATEGORIES: ${{ vars.ALLOW_NEW_CATEGORIES }}
           DEFAULT_CATEGORY_SLUG: ${{ vars.DEFAULT_CATEGORY_SLUG }}
-          # Image generation settings
+
+          # ===========================================
+          # Claude Configuration
+          # ===========================================
+          CLAUDE_MODEL: ${{ vars.CLAUDE_MODEL }}
+          MAX_TURNS: ${{ vars.MAX_TURNS }}
+          BLOGS_PER_RUN: ${{ vars.BLOGS_PER_RUN }}
+
+          # ===========================================
+          # Niche Prompt Configuration
+          # ===========================================
+          NICHE_PROMPT_PATH: ${{ vars.NICHE_PROMPT_PATH }}
+
+          # ===========================================
+          # Image Generation (Gemini)
+          # ===========================================
           ENABLE_IMAGE_GENERATION: ${{ vars.ENABLE_IMAGE_GENERATION }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GEMINI_MODEL: ${{ vars.GEMINI_MODEL }}
@@ -59,22 +81,66 @@ jobs:
           IMAGE_QUALITY: ${{ vars.IMAGE_QUALITY }}
           IMAGE_WIDTH: ${{ vars.IMAGE_WIDTH }}
           SUPABASE_STORAGE_BUCKET: ${{ vars.SUPABASE_STORAGE_BUCKET }}
+          IMAGE_CONTEXT: ${{ vars.IMAGE_CONTEXT }}
+          IMAGE_STYLE_PREFIX: ${{ vars.IMAGE_STYLE_PREFIX }}
+
+          # ===========================================
+          # Link Building
+          # ===========================================
+          ENABLE_LINK_BUILDING: ${{ vars.ENABLE_LINK_BUILDING }}
+          INTERNAL_LINK_PATTERN: ${{ vars.INTERNAL_LINK_PATTERN }}
+          LINK_VALIDATION_TIMEOUT: ${{ vars.LINK_VALIDATION_TIMEOUT }}
+          LINK_SUGGESTIONS_LIMIT: ${{ vars.LINK_SUGGESTIONS_LIMIT }}
+
+          # ===========================================
+          # Shopify Sync
+          # ===========================================
+          ENABLE_SHOPIFY_SYNC: ${{ vars.ENABLE_SHOPIFY_SYNC }}
+          SHOPIFY_STORE: ${{ vars.SHOPIFY_STORE }}
+          SHOPIFY_CLIENT_ID: ${{ secrets.SHOPIFY_CLIENT_ID }}
+          SHOPIFY_CLIENT_SECRET: ${{ secrets.SHOPIFY_CLIENT_SECRET }}
+          SHOPIFY_API_VERSION: ${{ vars.SHOPIFY_API_VERSION }}
+          SHOPIFY_DEFAULT_AUTHOR: ${{ vars.SHOPIFY_DEFAULT_AUTHOR }}
+          SHOPIFY_SYNC_ON_PUBLISH: ${{ vars.SHOPIFY_SYNC_ON_PUBLISH }}
         run: |
           python generator.py --status
 
       - name: Generate blog posts
         env:
+          # ===========================================
+          # Required (Secrets)
+          # ===========================================
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+
+          # ===========================================
+          # Blog Configuration (Variables)
+          # ===========================================
           DEFAULT_AUTHOR_SLUG: ${{ vars.DEFAULT_AUTHOR_SLUG }}
           DEFAULT_STATUS: ${{ vars.DEFAULT_STATUS }}
-          CLAUDE_MODEL: ${{ vars.CLAUDE_MODEL }}
-          MAX_TURNS: ${{ vars.MAX_TURNS }}
-          # Category settings
+
+          # ===========================================
+          # Category Configuration
+          # ===========================================
           ALLOW_NEW_CATEGORIES: ${{ vars.ALLOW_NEW_CATEGORIES }}
           DEFAULT_CATEGORY_SLUG: ${{ vars.DEFAULT_CATEGORY_SLUG }}
-          # Image generation settings
+
+          # ===========================================
+          # Claude Configuration
+          # ===========================================
+          CLAUDE_MODEL: ${{ vars.CLAUDE_MODEL }}
+          MAX_TURNS: ${{ vars.MAX_TURNS }}
+          BLOGS_PER_RUN: ${{ vars.BLOGS_PER_RUN }}
+
+          # ===========================================
+          # Niche Prompt Configuration
+          # ===========================================
+          NICHE_PROMPT_PATH: ${{ vars.NICHE_PROMPT_PATH }}
+
+          # ===========================================
+          # Image Generation (Gemini)
+          # ===========================================
           ENABLE_IMAGE_GENERATION: ${{ vars.ENABLE_IMAGE_GENERATION }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GEMINI_MODEL: ${{ vars.GEMINI_MODEL }}
@@ -82,8 +148,29 @@ jobs:
           IMAGE_QUALITY: ${{ vars.IMAGE_QUALITY }}
           IMAGE_WIDTH: ${{ vars.IMAGE_WIDTH }}
           SUPABASE_STORAGE_BUCKET: ${{ vars.SUPABASE_STORAGE_BUCKET }}
+          IMAGE_CONTEXT: ${{ vars.IMAGE_CONTEXT }}
+          IMAGE_STYLE_PREFIX: ${{ vars.IMAGE_STYLE_PREFIX }}
+
+          # ===========================================
+          # Link Building
+          # ===========================================
+          ENABLE_LINK_BUILDING: ${{ vars.ENABLE_LINK_BUILDING }}
+          INTERNAL_LINK_PATTERN: ${{ vars.INTERNAL_LINK_PATTERN }}
+          LINK_VALIDATION_TIMEOUT: ${{ vars.LINK_VALIDATION_TIMEOUT }}
+          LINK_SUGGESTIONS_LIMIT: ${{ vars.LINK_SUGGESTIONS_LIMIT }}
+
+          # ===========================================
+          # Shopify Sync
+          # ===========================================
+          ENABLE_SHOPIFY_SYNC: ${{ vars.ENABLE_SHOPIFY_SYNC }}
+          SHOPIFY_STORE: ${{ vars.SHOPIFY_STORE }}
+          SHOPIFY_CLIENT_ID: ${{ secrets.SHOPIFY_CLIENT_ID }}
+          SHOPIFY_CLIENT_SECRET: ${{ secrets.SHOPIFY_CLIENT_SECRET }}
+          SHOPIFY_API_VERSION: ${{ vars.SHOPIFY_API_VERSION }}
+          SHOPIFY_DEFAULT_AUTHOR: ${{ vars.SHOPIFY_DEFAULT_AUTHOR }}
+          SHOPIFY_SYNC_ON_PUBLISH: ${{ vars.SHOPIFY_SYNC_ON_PUBLISH }}
         run: |
-          # Use input count if manual trigger, otherwise default to 1
-          COUNT="${{ github.event.inputs.count || '1' }}"
+          # Use manual input count if provided, otherwise use BLOGS_PER_RUN var, fallback to 1
+          COUNT="${{ github.event.inputs.count || vars.BLOGS_PER_RUN || '1' }}"
           echo "Generating up to $COUNT blog post(s)..."
           python generator.py --autonomous --count "$COUNT" --verbose

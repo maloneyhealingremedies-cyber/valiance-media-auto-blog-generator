@@ -31,6 +31,8 @@ Go to your fork's **Settings** → **Secrets and variables** → **Actions** →
 | `SUPABASE_URL` | Yes | Your Supabase project URL |
 | `SUPABASE_SERVICE_KEY` | Yes | Supabase service role key |
 | `GEMINI_API_KEY` | If using images | Google AI API key |
+| `SHOPIFY_CLIENT_ID` | If using Shopify | Shopify OAuth client ID |
+| `SHOPIFY_CLIENT_SECRET` | If using Shopify | Shopify OAuth client secret |
 
 ---
 
@@ -45,20 +47,53 @@ Go to **Settings** → **Secrets and variables** → **Actions** → **Variables
 | `DEFAULT_AUTHOR_SLUG` | `staff-writer` | Author slug for posts |
 | `DEFAULT_STATUS` | `published` | Post status (`draft` or `published`) |
 
-### Optional Variables
+### Core Configuration
 
 | Variable | Default | Description |
 |----------|---------|-------------|
+| `BLOGS_PER_RUN` | `1` | Number of posts to generate per scheduled run |
 | `CLAUDE_MODEL` | `claude-sonnet-4-5-20250929` | Claude model to use |
 | `MAX_TURNS` | `15` | Max agent loop iterations |
-| `ALLOW_NEW_CATEGORIES` | `true` | Allow AI to create categories |
-| `DEFAULT_CATEGORY_SLUG` | | Fallback category slug |
-| `ENABLE_IMAGE_GENERATION` | `false` | Enable Gemini images |
-| `GEMINI_MODEL` | `gemini-2.0-flash-exp-image-generation` | Gemini model |
+| `NICHE_PROMPT_PATH` | `prompts/niche/golf.md` | Path to your niche prompt file |
+
+### Category Configuration
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `ALLOW_NEW_CATEGORIES` | `false` | Allow AI to create new categories |
+| `DEFAULT_CATEGORY_SLUG` | `general` | Fallback category slug |
+
+### Image Generation
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `ENABLE_IMAGE_GENERATION` | `false` | Enable Gemini image generation |
+| `GEMINI_MODEL` | `gemini-3-pro-image` | Gemini model for images |
 | `IMAGE_ASPECT_RATIO` | `21:9` | Image aspect ratio |
 | `IMAGE_WIDTH` | `1600` | Image width in pixels |
 | `IMAGE_QUALITY` | `85` | WebP quality (1-100) |
 | `SUPABASE_STORAGE_BUCKET` | `blog-images` | Storage bucket name |
+| `IMAGE_CONTEXT` | | Theme for images (e.g., "golf course, sunny day") |
+| `IMAGE_STYLE_PREFIX` | | Custom style prefix for prompts |
+
+### Link Building
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `ENABLE_LINK_BUILDING` | `true` | Enable internal link building |
+| `INTERNAL_LINK_PATTERN` | `/blog/{slug}` | URL pattern for internal links |
+| `LINK_VALIDATION_TIMEOUT` | `5000` | URL validation timeout (ms) |
+| `LINK_SUGGESTIONS_LIMIT` | `8` | Max link suggestions per post |
+
+### Shopify Sync
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `ENABLE_SHOPIFY_SYNC` | `false` | Enable Shopify sync |
+| `SHOPIFY_STORE` | | Your store name (before .myshopify.com) |
+| `SHOPIFY_API_VERSION` | `2025-01` | Shopify API version |
+| `SHOPIFY_DEFAULT_AUTHOR` | | Author name for Shopify articles |
+| `SHOPIFY_SYNC_ON_PUBLISH` | `true` | Auto-sync on publish |
 
 ---
 
@@ -76,7 +111,7 @@ Run the workflow manually anytime:
 
 1. Go to **Actions** → **Generate Blog Posts**
 2. Click **Run workflow**
-3. Enter the number of posts to generate (default: 1)
+3. Optionally enter the number of posts (overrides `BLOGS_PER_RUN`)
 4. Click **Run workflow**
 
 ---
@@ -114,7 +149,7 @@ cp prompts/niche/golf.md prompts/niche/your-niche.md
 
 Edit the file with your niche's tone, topics, and guidelines.
 
-### 2. Update the Workflow
+### 2. Update the Variable
 
 Add `NICHE_PROMPT_PATH` to your repository variables:
 
@@ -150,7 +185,8 @@ The workflow automatically shows queue status before generating. Check the logs 
 ## Cost Estimation
 
 Running daily with 1 post (default):
-- ~$0.20/post × 30 days = ~$6/month
+- ~$0.30/post × 30 days = ~$9/month (without images)
+- ~$0.45/post × 30 days = ~$13.50/month (with images)
 - GitHub Actions: Free for public repos, 2000 mins/month for private
 
 ---
@@ -163,11 +199,20 @@ Running daily with 1 post (default):
 **"Secret not found" errors**
 → Check secret names match exactly (case-sensitive). Secrets go in Secrets tab, variables go in Variables tab.
 
+**BLOGS_PER_RUN not working**
+→ Make sure `BLOGS_PER_RUN` is set in the Variables tab (not Secrets). The workflow uses this to determine how many posts to generate on scheduled runs.
+
 **Posts not appearing**
 → Check `DEFAULT_STATUS` variable is set to `published`, or posts will be drafts.
 
 **Queue empty**
 → Add more ideas to `blog_ideas` table in Supabase.
+
+**Images not generating**
+→ Check `ENABLE_IMAGE_GENERATION=true` and `GEMINI_API_KEY` is set as a secret.
+
+**Links not being added**
+→ Check `ENABLE_LINK_BUILDING=true` and you have enough published posts (minimum 3).
 
 **Timeout errors**
 → The workflow has a 30-minute timeout. If posts are complex, reduce the count or increase `MAX_TURNS`.
