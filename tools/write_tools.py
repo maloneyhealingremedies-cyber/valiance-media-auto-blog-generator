@@ -249,6 +249,7 @@ async def link_tags_to_post(args: dict[str, Any]) -> dict[str, Any]:
 
 async def update_post_status(args: dict[str, Any]) -> dict[str, Any]:
     """Update post status (draft/published/archived)."""
+    from datetime import datetime, timezone
     try:
         post_id = args["post_id"]
         status = args["status"]
@@ -261,7 +262,10 @@ async def update_post_status(args: dict[str, Any]) -> dict[str, Any]:
             async with session.patch(
                 f"{SUPABASE_URL}/rest/v1/blog_posts?id=eq.{post_id}",
                 headers=headers,
-                json={"status": status}
+                json={
+                    "status": status,
+                    "updated_at": datetime.now(timezone.utc).isoformat()
+                }
             ) as resp:
                 if resp.status in [200, 204]:
                     return {"content": [{"type": "text", "text": f"Updated: {post_id} → {status}"}]}
@@ -275,8 +279,12 @@ async def update_post_status(args: dict[str, Any]) -> dict[str, Any]:
 
 async def update_post_image(post_id: str, image_url: str, alt_text: str = None) -> bool:
     """Update a post's featured image (for backfill). Returns True on success."""
+    from datetime import datetime, timezone
     try:
-        update_data = {"featured_image": image_url}
+        update_data = {
+            "featured_image": image_url,
+            "updated_at": datetime.now(timezone.utc).isoformat()
+        }
         if alt_text:
             update_data["featured_image_alt"] = alt_text
 

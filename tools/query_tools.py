@@ -124,9 +124,9 @@ async def get_posts_without_images(limit: int = 10) -> list:
     try:
         async with aiohttp.ClientSession() as session:
             headers = get_supabase_headers()
-            # Get posts where featured_image is null, include category for prompt context
+            # Get posts where featured_image is null OR empty string, include category for prompt context
             async with session.get(
-                f"{SUPABASE_URL}/rest/v1/blog_posts?select=id,slug,title,excerpt,category_id,blog_categories(slug)&featured_image=is.null&order=created_at.desc&limit={limit}",
+                f"{SUPABASE_URL}/rest/v1/blog_posts?select=id,slug,title,excerpt,category_id,blog_categories(slug)&or=(featured_image.is.null,featured_image.eq.)&order=created_at.desc&limit={limit}",
                 headers=headers
             ) as resp:
                 if resp.status == 200:

@@ -94,6 +94,42 @@ python generator.py --backfill-images-all          # Process ALL posts without i
 
 Requires `ENABLE_IMAGE_GENERATION=true` and `GEMINI_API_KEY` in `.env`.
 
+### Clean Up Bad Images
+Remove a featured image from a post (clears database fields and deletes from storage).
+
+```bash
+python generator.py --cleanup-image "post-slug"    # Clean up by slug
+python generator.py --cleanup-image-id "uuid"      # Clean up by post ID
+```
+
+The cleanup process:
+1. Sets `featured_image` and `featured_image_alt` to NULL in the database
+2. Deletes the image file from Supabase storage bucket
+
+### Refresh Images (Cleanup + Generate New)
+Replace a bad featured image with a new one in a single command.
+
+```bash
+python generator.py --refresh-image "post-slug"    # Replace by slug
+python generator.py --refresh-image-id "uuid"      # Replace by post ID
+python generator.py --refresh-image "post-slug" -v # With verbose output
+```
+
+The refresh process:
+1. Cleans up the existing image (DB + storage)
+2. Generates a new image using the post's title and excerpt
+3. Updates the post with the new image URL
+
+**Typical workflow for bad images:**
+```bash
+# Option 1: Replace immediately with new image
+python generator.py --refresh-image my-bad-post
+
+# Option 2: Remove now, backfill later
+python generator.py --cleanup-image my-bad-post
+python generator.py --backfill-images --count 1
+```
+
 ---
 
 ## Link Building

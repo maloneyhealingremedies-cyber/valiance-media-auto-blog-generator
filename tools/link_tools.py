@@ -1306,11 +1306,15 @@ async def apply_link_insertions(args: dict[str, Any]) -> dict[str, Any]:
                     }]
                 }
 
-            # Save updated content
+            # Save updated content with updated_at to trigger webhooks
+            from datetime import datetime, timezone
             async with session.patch(
                 f"{SUPABASE_URL}/rest/v1/blog_posts?id=eq.{post_id}",
                 headers=headers,
-                json={"content": content}
+                json={
+                    "content": content,
+                    "updated_at": datetime.now(timezone.utc).isoformat()
+                }
             ) as resp:
                 if resp.status not in [200, 204]:
                     error = await resp.text()
@@ -1419,11 +1423,15 @@ async def remove_internal_links_from_post(post_id: str) -> dict[str, Any]:
             if removed_count == 0:
                 return {"success": True, "removed": 0, "message": "No internal links found"}
 
-            # Save cleaned content
+            # Save cleaned content with updated_at to trigger webhooks
+            from datetime import datetime, timezone
             async with session.patch(
                 f"{SUPABASE_URL}/rest/v1/blog_posts?id=eq.{post_id}",
                 headers=headers,
-                json={"content": content}
+                json={
+                    "content": content,
+                    "updated_at": datetime.now(timezone.utc).isoformat()
+                }
             ) as resp:
                 if resp.status not in [200, 204]:
                     return {"success": False, "error": "Failed to save cleaned content"}

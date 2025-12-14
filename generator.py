@@ -8,6 +8,7 @@ It can operate in several modes:
 2. Autonomous mode: Process posts from a queue of blog ideas
 3. Backfill images: Generate images for posts missing them
 4. Backfill links: Add internal links to posts with fewer than recommended
+5. Cleanup/refresh images: Remove bad images or replace them with new ones
 
 Usage:
     python generator.py "topic to write about"          # Manual mode
@@ -17,6 +18,8 @@ Usage:
     python generator.py --backfill-images-all           # Backfill ALL images
     python generator.py --backfill-links --count 5      # Backfill up to 5 posts
     python generator.py --backfill-links-all            # Backfill ALL links
+    python generator.py --cleanup-image post-slug       # Remove bad image (DB + storage)
+    python generator.py --refresh-image post-slug       # Replace image (cleanup + generate new)
     python generator.py --batch topics.txt              # Batch from file
     python generator.py --interactive                   # Interactive mode
     python generator.py --status                        # Show queue status
@@ -26,6 +29,8 @@ Examples:
     python generator.py --autonomous --verbose
     python generator.py --backfill-images-all
     python generator.py --backfill-links-all
+    python generator.py --cleanup-image my-bad-post
+    python generator.py --refresh-image my-bad-post -v
 """
 
 import asyncio
@@ -459,6 +464,28 @@ async def get_queue_status() -> None:
             print(content.get("text", ""))
 
 
+def _extract_core_subject(title: str) -> str:
+    """
+    Extract the core subject from a blog title by removing common filler words.
+    Used for both image prompts and alt text generation.
+    """
+    # Remove common article-type words that aren't descriptive
+    cleanup_words = [
+        "complete guide", "guide to", "how to", "what is", "what are",
+        "explained", "tips", "tricks", "best", "top", "ultimate",
+        ": complete", "- complete", "for beginners", "for experts",
+    ]
+
+    subject = title.lower()
+    for word in cleanup_words:
+        subject = subject.replace(word.lower(), "")
+
+    # Clean up extra spaces and punctuation
+    subject = " ".join(subject.split()).strip(" :-")
+
+    return subject
+
+
 def _create_scene_prompt(title: str, excerpt: str = "") -> str:
     """
     Create a scene-based image prompt from a blog title.
@@ -466,19 +493,7 @@ def _create_scene_prompt(title: str, excerpt: str = "") -> str:
     Avoids words like "article", "blog", "guide" that cause Gemini to render text.
     Instead focuses on describing a visual scene related to the topic.
     """
-    # Remove common article-type words that shouldn't appear in image prompts
-    cleanup_words = [
-        "complete guide", "guide to", "how to", "what is", "what are",
-        "explained", "tips", "tricks", "best", "top", "ultimate",
-        ": complete", "- complete", "for beginners", "for experts",
-    ]
-
-    scene_base = title.lower()
-    for word in cleanup_words:
-        scene_base = scene_base.replace(word.lower(), "")
-
-    # Clean up extra spaces and punctuation
-    scene_base = " ".join(scene_base.split()).strip(" :-")
+    scene_base = _extract_core_subject(title)
 
     # Build a scene description
     if scene_base:
@@ -488,6 +503,104 @@ def _create_scene_prompt(title: str, excerpt: str = "") -> str:
         prompt = f"A beautiful photograph related to: {excerpt[:150]}, cinematic composition"
 
     return prompt
+
+
+def _create_alt_text(title: str, excerpt: str = "") -> str:
+    """
+    Create SEO-friendly alt text for a featured image.
+
+    Returns a descriptive alt text based on the blog's core subject,
+    NOT a lazy "Featured image for [title]" format.
+    """
+    subject = _extract_core_subject(title)
+
+    if subject:
+        # Capitalize first letter and create descriptive alt
+        alt_text = subject[0].upper() + subject[1:] if len(subject) > 1 else subject.upper()
+        return alt_text
+    elif excerpt:
+        # Fallback to excerpt-based description
+        clean_excerpt = excerpt[:100].strip()
+        if clean_excerpt:
+            return clean_excerpt[0].upper() + clean_excerpt[1:] if len(clean_excerpt) > 1 else clean_excerpt
+
+    # Last resort fallback (shouldn't happen often)
+    return f"Featured image for {title}"
+
+
+async def generate_image_prompt_and_alt(title: str, excerpt: str = "", verbose: bool = False) -> tuple[str, str]:
+    """
+    Use Claude to generate an image prompt and alt text for a blog post.
+
+    This ensures backfilled images have the same quality as new posts created
+    by the Claude agent - both use AI creativity for prompt and alt generation.
+
+    Args:
+        title: The blog post title
+        excerpt: The blog post excerpt/summary
+        verbose: Print debug info
+
+    Returns:
+        Tuple of (image_prompt, alt_text)
+        Falls back to programmatic generation if API call fails
+    """
+    try:
+        import anthropic
+    except ImportError:
+        if verbose:
+            print("anthropic not installed, using fallback")
+        return _create_scene_prompt(title, excerpt), _create_alt_text(title, excerpt)
+
+    try:
+        client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+
+        prompt = f"""Given this blog post, generate two things:
+
+1. IMAGE_PROMPT: A detailed prompt for generating a featured image. Describe a realistic photograph or scene that would visually represent the topic. Focus on visual elements (lighting, composition, subjects, setting). Do NOT include text, words, or typography in the image. Avoid words like "article", "blog", "guide" that might cause text to render.
+
+2. ALT_TEXT: A concise, SEO-friendly alt text that describes what the image shows. This should be descriptive of the image content itself, NOT "Featured image for [title]". Keep it under 125 characters.
+
+Blog Title: {title}
+Blog Excerpt: {excerpt[:300] if excerpt else 'No excerpt available'}
+
+Respond in exactly this format:
+IMAGE_PROMPT: [your image prompt here]
+ALT_TEXT: [your alt text here]"""
+
+        response = client.messages.create(
+            model=CLAUDE_MODEL,
+            max_tokens=500,
+            messages=[{"role": "user", "content": prompt}]
+        )
+
+        # Parse response
+        response_text = response.content[0].text
+        lines = response_text.strip().split("\n")
+
+        image_prompt = None
+        alt_text = None
+
+        for line in lines:
+            if line.startswith("IMAGE_PROMPT:"):
+                image_prompt = line.replace("IMAGE_PROMPT:", "").strip()
+            elif line.startswith("ALT_TEXT:"):
+                alt_text = line.replace("ALT_TEXT:", "").strip()
+
+        # Validate we got both
+        if image_prompt and alt_text:
+            if verbose:
+                print(f"Claude generated prompt: {image_prompt[:80]}...")
+                print(f"Claude generated alt: {alt_text}")
+            return image_prompt, alt_text
+        else:
+            if verbose:
+                print("Could not parse Claude response, using fallback")
+            return _create_scene_prompt(title, excerpt), _create_alt_text(title, excerpt)
+
+    except Exception as e:
+        if verbose:
+            print(f"Claude API error: {e}, using fallback")
+        return _create_scene_prompt(title, excerpt), _create_alt_text(title, excerpt)
 
 
 async def backfill_images(count: int = 1, verbose: bool = False) -> list:
@@ -533,9 +646,9 @@ async def backfill_images(count: int = 1, verbose: bool = False) -> list:
         category_data = post.get("blog_categories")
         category_slug = category_data.get("slug") if category_data else "general"
 
-        # Create scene-based prompt (avoid mentioning "article" or "blog" to prevent text rendering)
-        # Extract the core subject from the title and describe a visual scene
-        prompt = _create_scene_prompt(title, excerpt)
+        # Use Claude to generate image prompt and alt text (same as new posts)
+        print("Generating image prompt and alt text with Claude...")
+        prompt, alt_text = await generate_image_prompt_and_alt(title, excerpt, verbose=verbose)
 
         if verbose:
             print(f"Category: {category_slug}")
@@ -569,8 +682,7 @@ async def backfill_images(count: int = 1, verbose: bool = False) -> list:
                     break
 
             if image_url:
-                # Update the post
-                alt_text = f"Featured image for {title}"
+                # Update the post with Claude-generated alt text
                 success = await update_post_image(post_id, image_url, alt_text)
 
                 if success:
@@ -947,6 +1059,8 @@ Modes:
   BACKFILL IMG:   python generator.py --backfill-images
   BACKFILL LINKS: python generator.py --backfill-links
   CLEANUP LINKS:  python generator.py --cleanup-links-all
+  CLEANUP IMAGE:  python generator.py --cleanup-image post-slug
+  REFRESH IMAGE:  python generator.py --refresh-image post-slug
   BATCH:          python generator.py --batch topics.txt
   INTERACTIVE:    python generator.py --interactive
   STATUS:         python generator.py --status
@@ -973,6 +1087,14 @@ Examples:
   python generator.py --cleanup-links post-slug
   python generator.py --cleanup-links-id post-uuid
   python generator.py --cleanup-links-all
+
+  # Remove bad featured image (clears DB + deletes from storage)
+  python generator.py --cleanup-image post-slug
+  python generator.py --cleanup-image-id post-uuid
+
+  # Replace bad featured image (cleanup + generate new in one command)
+  python generator.py --refresh-image post-slug
+  python generator.py --refresh-image-id post-uuid
 
   # Check queue status
   python generator.py --status
@@ -1058,6 +1180,30 @@ Examples:
         "--cleanup-links-all",
         action="store_true",
         help="Remove internal links from ALL published posts"
+    )
+    parser.add_argument(
+        "--cleanup-image",
+        type=str,
+        metavar="SLUG",
+        help="Remove featured image from a post by slug (clears DB + deletes from storage)"
+    )
+    parser.add_argument(
+        "--cleanup-image-id",
+        type=str,
+        metavar="UUID",
+        help="Remove featured image from a post by ID (clears DB + deletes from storage)"
+    )
+    parser.add_argument(
+        "--refresh-image",
+        type=str,
+        metavar="SLUG",
+        help="Replace featured image for a post by slug (cleanup + generate new)"
+    )
+    parser.add_argument(
+        "--refresh-image-id",
+        type=str,
+        metavar="UUID",
+        help="Replace featured image for a post by ID (cleanup + generate new)"
     )
     parser.add_argument(
         "--verbose", "-v",
@@ -1269,6 +1415,56 @@ Examples:
             print(f"Removed {results[0].get('removed', 0)} internal links")
         else:
             print(f"Error: {results[0].get('error', 'Unknown error')}")
+
+    elif args.cleanup_image:
+        from tools.image_tools import cleanup_post_image
+        print(f"Cleanup Mode: Removing featured image from '{args.cleanup_image}'")
+        result = asyncio.run(cleanup_post_image(post_slug=args.cleanup_image, verbose=args.verbose))
+        if result.get("success"):
+            print(f"Cleaned up image for '{result.get('post_slug')}'")
+            print(f"Storage path: {result.get('storage_path')}")
+        else:
+            print(f"Error: {result.get('error', 'Unknown error')}")
+
+    elif args.cleanup_image_id:
+        from tools.image_tools import cleanup_post_image
+        print(f"Cleanup Mode: Removing featured image from post ID '{args.cleanup_image_id}'")
+        result = asyncio.run(cleanup_post_image(post_id=args.cleanup_image_id, verbose=args.verbose))
+        if result.get("success"):
+            print(f"Cleaned up image for '{result.get('post_slug')}'")
+            print(f"Storage path: {result.get('storage_path')}")
+        else:
+            print(f"Error: {result.get('error', 'Unknown error')}")
+
+    elif args.refresh_image:
+        from tools.image_tools import refresh_post_image
+        print(f"Refresh Mode: Replacing featured image for '{args.refresh_image}'")
+        print("="*50)
+        result = asyncio.run(refresh_post_image(post_slug=args.refresh_image, verbose=args.verbose))
+        print("="*50)
+        if result.get("success"):
+            print(f"SUCCESS: New image for '{result.get('post_slug')}'")
+            print(f"URL: {result.get('image_url')}")
+        else:
+            print(f"Error: {result.get('error', 'Unknown error')}")
+            if result.get("cleanup_completed"):
+                print("Note: Cleanup was completed, but image generation failed.")
+                print("Run --backfill-images to generate a new image later.")
+
+    elif args.refresh_image_id:
+        from tools.image_tools import refresh_post_image
+        print(f"Refresh Mode: Replacing featured image for post ID '{args.refresh_image_id}'")
+        print("="*50)
+        result = asyncio.run(refresh_post_image(post_id=args.refresh_image_id, verbose=args.verbose))
+        print("="*50)
+        if result.get("success"):
+            print(f"SUCCESS: New image for '{result.get('post_slug')}'")
+            print(f"URL: {result.get('image_url')}")
+        else:
+            print(f"Error: {result.get('error', 'Unknown error')}")
+            if result.get("cleanup_completed"):
+                print("Note: Cleanup was completed, but image generation failed.")
+                print("Run --backfill-images to generate a new image later.")
 
     elif args.interactive:
         asyncio.run(interactive_mode(verbose=args.verbose))
