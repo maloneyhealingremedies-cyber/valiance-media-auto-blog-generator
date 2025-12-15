@@ -4,7 +4,7 @@ An AI-powered blog generation system that uses Claude to autonomously create hig
 
 ## Important: Customization Required
 
-**This is not a plug-and-play solution.** This generator uses a **content block system** where posts are stored as JSON arrays, not HTML. Your frontend must be built to render these blocks.
+**This is not a plug-and-play solution.** This generator uses a **content block system** where posts are stored as JSON arrays, not HTML. Your frontend must be built to render these blocks (unless you are using Shopify).
 
 This project serves as a **reference implementation**. It ships configured for golf content as a working example — customize it for your niche.
 
