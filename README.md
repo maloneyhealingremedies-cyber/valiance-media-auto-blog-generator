@@ -15,6 +15,7 @@ This project serves as a **reference implementation**. It ships configured for g
 - **AI Image Generation** - Optional featured images via Gemini
 - **Internal Link Building** - Automatic internal linking with URL validation
 - **Shopify Sync** - One-way sync to Shopify's blog CMS
+- **WordPress Sync** - One-way sync to WordPress via REST API
 - **SEO Optimized** - Generates titles, excerpts, slugs, and keyword metadata
 - **Cost Optimized** - Prompt caching reduces token usage by ~50%
 
@@ -26,11 +27,12 @@ This project serves as a **reference implementation**. It ships configured for g
 │  (blog_ideas)   │ ──► │   (AI Agent)    │ ──► │   (blog_posts)  │
 └─────────────────┘     └─────────────────┘     └─────────────────┘
                                                         │
-                                                        ▼ (optional)
-                                                ┌─────────────────┐
-                                                │    SHOPIFY      │
-                                                │   (Articles)    │
-                                                └─────────────────┘
+                                         ┌──────────────┴──────────────┐
+                                         ▼ (optional)                  ▼ (optional)
+                                 ┌─────────────────┐           ┌─────────────────┐
+                                 │    SHOPIFY      │           │   WORDPRESS     │
+                                 │   (Articles)    │           │    (Posts)      │
+                                 └─────────────────┘           └─────────────────┘
 ```
 
 ## Quick Start
@@ -122,9 +124,32 @@ python generator.py --shopify-sync-all
 
 # Check sync status
 python generator.py --shopify-status
+
+# Import existing Shopify blogs into Supabase
+python generator.py --shopify-import-categories
 ```
 
-See [Getting Started with Shopify](docs/setup/getting-started-with-shopify.md) for setup instructions.
+See [Getting Started with Shopify](docs/setup/shopify/getting-started-with-shopify.md) for setup instructions.
+
+## WordPress Sync
+
+Optionally sync all content to a WordPress site:
+
+```bash
+# Sync categories first
+python generator.py --wordpress-sync-categories
+
+# Sync all posts
+python generator.py --wordpress-sync-all
+
+# Check sync status
+python generator.py --wordpress-status
+
+# Import existing WordPress categories into Supabase
+python generator.py --wordpress-import-categories
+```
+
+See [Getting Started with WordPress](docs/setup/wordpress/getting-started-with-wordpress.md) for setup instructions.
 
 ## Project Structure
 
@@ -138,7 +163,9 @@ See [Getting Started with Shopify](docs/setup/getting-started-with-shopify.md) f
 │   ├── image_tools.py        # AI image generation
 │   ├── link_tools.py         # Internal link building
 │   ├── shopify_tools.py      # Shopify API
-│   └── shopify_sync.py       # Shopify CLI handlers
+│   ├── shopify_sync.py       # Shopify CLI handlers
+│   ├── wordpress_tools.py    # WordPress REST API
+│   └── wordpress_sync.py     # WordPress CLI handlers
 ├── prompts/
 │   ├── system_prompt.md      # Universal instructions
 │   └── niche/                # Niche-specific prompts
@@ -153,7 +180,8 @@ See [Getting Started with Shopify](docs/setup/getting-started-with-shopify.md) f
 | Guide | Description |
 |-------|-------------|
 | [Getting Started with React](docs/setup/getting-started-with-react.md) | Render content blocks in React |
-| [Getting Started with Shopify](docs/setup/getting-started-with-shopify.md) | Sync content to Shopify |
+| [Getting Started with Shopify](docs/setup/shopify/getting-started-with-shopify.md) | Sync content to Shopify |
+| [Getting Started with WordPress](docs/setup/wordpress/getting-started-with-wordpress.md) | Sync content to WordPress |
 | [How to Use](docs/setup/how-to-use.md) | All CLI commands and options |
 | [How to Automate](docs/setup/how-to-automate.md) | GitHub Actions workflow setup |
 
@@ -180,6 +208,7 @@ Essential variables (see [full reference](docs/configuration.md)):
 | `ENABLE_IMAGE_GENERATION` | No | Enable Gemini images |
 | `ENABLE_LINK_BUILDING` | No | Enable internal link building |
 | `ENABLE_SHOPIFY_SYNC` | No | Enable Shopify sync |
+| `ENABLE_WORDPRESS_SYNC` | No | Enable WordPress sync |
 
 ## Cost Estimation
 

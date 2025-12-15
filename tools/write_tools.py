@@ -19,6 +19,8 @@ from config import (
     DEFAULT_STATUS,
     ENABLE_SHOPIFY_SYNC,
     SHOPIFY_SYNC_ON_PUBLISH,
+    ENABLE_WORDPRESS_SYNC,
+    WORDPRESS_SYNC_ON_PUBLISH,
     ENABLE_LINK_BUILDING,
 )
 
@@ -145,6 +147,53 @@ async def create_blog_post(args: dict[str, Any]) -> dict[str, Any]:
 
                 except Exception as sync_error:
                     result_text += f" | Shopify sync error: {str(sync_error)[:50]}"
+
+            # Auto-sync to WordPress if enabled
+            if ENABLE_WORDPRESS_SYNC and WORDPRESS_SYNC_ON_PUBLISH:
+                try:
+                    from tools.wordpress_sync import ensure_category_synced as wp_ensure_category_synced, get_post_tags as wp_get_post_tags, update_post_wordpress_fields
+                    from tools.wordpress_tools import sync_post_to_wordpress, get_wordpress_visibility_label
+
+                    category_id = args.get("category_id")
+                    wordpress_category_id = None
+
+                    if category_id:
+                        wordpress_category_id = await wp_ensure_category_synced(category_id)
+
+                    if wordpress_category_id:
+                        # Get tag names from the tags we just linked
+                        tag_names = []
+                        if tag_ids:
+                            tag_names = await wp_get_post_tags(post_id)
+
+                        status = args.get("status", DEFAULT_STATUS)
+                        wp_sync_result = await sync_post_to_wordpress(
+                            post_id=post_id,
+                            title=args["title"],
+                            slug=args["slug"],
+                            excerpt=args["excerpt"],
+                            content=args["content"],
+                            status=status,
+                            wordpress_category_id=wordpress_category_id,
+                            featured_image=args.get("featured_image"),
+                            featured_image_alt=args.get("featured_image_alt"),
+                            seo=args.get("seo"),
+                            scheduled_at=args.get("scheduled_at"),
+                            tags=tag_names,
+                        )
+
+                        if wp_sync_result.get("success"):
+                            await update_post_wordpress_fields(post_id, wordpress_post_id=wp_sync_result["wordpress_post_id"])
+                            visibility = get_wordpress_visibility_label(status)
+                            result_text += f" | WP synced ({visibility})"
+                        else:
+                            await update_post_wordpress_fields(post_id, error=wp_sync_result.get("error"))
+                            result_text += f" | WP sync failed: {wp_sync_result.get('error', 'Unknown')[:50]}"
+                    else:
+                        result_text += " | WP: no category synced"
+
+                except Exception as wp_sync_error:
+                    result_text += f" | WP sync error: {str(wp_sync_error)[:50]}"
 
             # Auto-extract and save links if enabled
             if ENABLE_LINK_BUILDING:

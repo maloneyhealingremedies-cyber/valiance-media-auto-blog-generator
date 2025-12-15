@@ -85,6 +85,37 @@ python generator.py --shopify-sync-categories
 python generator.py --shopify-sync-all
 ```
 
+### Alternative: Import Existing Content from Shopify
+
+If you already have content in Shopify and want to import it into Supabase:
+
+```bash
+# Import everything at once (categories/blogs, tags, posts/articles)
+python generator.py --shopify-import-all
+
+# Or import individually:
+python generator.py --shopify-import-categories
+python generator.py --shopify-import-tags
+python generator.py --shopify-import-posts
+```
+
+**With `--force-pull`**: Overwrites existing Supabase data with Shopify data:
+```bash
+python generator.py --shopify-import-all --force-pull
+```
+
+This is useful when:
+- Setting up the generator with an existing Shopify store
+- You want Supabase to mirror your existing Shopify content
+- You made changes in Shopify and want to pull them into Supabase
+
+**What gets imported:**
+- **Categories**: Shopify Blogs → `blog_categories` table
+- **Tags**: Extracted from all Shopify Articles → `blog_tags` table
+- **Posts**: Shopify Articles → `blog_posts` table (with HTML content preserved)
+
+**Note:** Shopify doesn't have a separate Tags API. Tags are extracted from all articles during import. Post content is stored as HTML. To convert to structured content blocks, you would need to manually edit posts in your frontend.
+
 ---
 
 ## Done!

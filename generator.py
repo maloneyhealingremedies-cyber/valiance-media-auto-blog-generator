@@ -56,6 +56,7 @@ from config import (
     BLOGS_PER_RUN,
     NICHE_PROMPT_PATH,
     ENABLE_SHOPIFY_SYNC,
+    ENABLE_WORDPRESS_SYNC,
     ENABLE_LINK_BUILDING,
 )
 from tools.query_tools import QUERY_TOOLS
@@ -109,6 +110,18 @@ async def health_check(verbose: bool = False) -> dict:
             errors.append("SHOPIFY_CLIENT_SECRET not set but ENABLE_SHOPIFY_SYNC=true")
         elif verbose:
             print("✓ Shopify credentials configured")
+
+    # Check WordPress config (if sync enabled)
+    if ENABLE_WORDPRESS_SYNC:
+        from config import WORDPRESS_URL, WORDPRESS_USERNAME, WORDPRESS_APP_PASSWORD
+        if not WORDPRESS_URL:
+            errors.append("WORDPRESS_URL not set but ENABLE_WORDPRESS_SYNC=true")
+        elif not WORDPRESS_USERNAME:
+            errors.append("WORDPRESS_USERNAME not set but ENABLE_WORDPRESS_SYNC=true")
+        elif not WORDPRESS_APP_PASSWORD:
+            errors.append("WORDPRESS_APP_PASSWORD not set but ENABLE_WORDPRESS_SYNC=true")
+        elif verbose:
+            print("✓ WordPress credentials configured")
 
     # Check Link Building config (if enabled)
     if ENABLE_LINK_BUILDING:
@@ -1258,9 +1271,101 @@ Examples:
         help="Show Shopify sync status of all categories"
     )
     shopify_group.add_argument(
+        "--shopify-import-categories",
+        action="store_true",
+        help="Import categories (blogs) from Shopify into Supabase"
+    )
+    shopify_group.add_argument(
+        "--shopify-import-tags",
+        action="store_true",
+        help="Import tags from Shopify articles into Supabase"
+    )
+    shopify_group.add_argument(
+        "--shopify-import-posts",
+        action="store_true",
+        help="Import posts (articles) from Shopify into Supabase"
+    )
+    shopify_group.add_argument(
+        "--shopify-import-all",
+        action="store_true",
+        help="Import all content (categories, tags, posts) from Shopify into Supabase"
+    )
+    shopify_group.add_argument(
         "--force",
         action="store_true",
-        help="Force sync even if already up-to-date (use with --shopify-sync commands)"
+        help="Force sync even if already up-to-date (use with sync commands)"
+    )
+    shopify_group.add_argument(
+        "--force-pull",
+        action="store_true",
+        help="Force overwrite Supabase data with CMS data (use with import commands)"
+    )
+
+    # WordPress sync arguments
+    wordpress_group = parser.add_argument_group('WordPress Sync')
+    wordpress_group.add_argument(
+        "--wordpress-sync",
+        type=str,
+        metavar="SLUG",
+        help="Sync a specific post to WordPress by slug"
+    )
+    wordpress_group.add_argument(
+        "--wordpress-sync-id",
+        type=str,
+        metavar="UUID",
+        help="Sync a specific post to WordPress by ID"
+    )
+    wordpress_group.add_argument(
+        "--wordpress-sync-all",
+        action="store_true",
+        help="Sync all posts that need syncing to WordPress"
+    )
+    wordpress_group.add_argument(
+        "--wordpress-sync-recent",
+        type=int,
+        metavar="N",
+        help="Sync the N most recently updated posts to WordPress"
+    )
+    wordpress_group.add_argument(
+        "--wordpress-sync-categories",
+        action="store_true",
+        help="Sync all categories to WordPress"
+    )
+    wordpress_group.add_argument(
+        "--wordpress-sync-category",
+        type=str,
+        metavar="SLUG",
+        help="Sync a specific category to WordPress by slug"
+    )
+    wordpress_group.add_argument(
+        "--wordpress-status",
+        action="store_true",
+        help="Show WordPress sync status of all posts"
+    )
+    wordpress_group.add_argument(
+        "--wordpress-status-categories",
+        action="store_true",
+        help="Show WordPress sync status of all categories"
+    )
+    wordpress_group.add_argument(
+        "--wordpress-import-categories",
+        action="store_true",
+        help="Import categories from WordPress into Supabase"
+    )
+    wordpress_group.add_argument(
+        "--wordpress-import-tags",
+        action="store_true",
+        help="Import tags from WordPress into Supabase"
+    )
+    wordpress_group.add_argument(
+        "--wordpress-import-posts",
+        action="store_true",
+        help="Import posts from WordPress into Supabase"
+    )
+    wordpress_group.add_argument(
+        "--wordpress-import-all",
+        action="store_true",
+        help="Import all content (categories, tags, posts) from WordPress into Supabase"
     )
 
     args = parser.parse_args()
@@ -1273,7 +1378,7 @@ Examples:
         sys.exit(1)
 
     # Health check (skip for status-only commands)
-    skip_health_check = args.status or args.shopify_status or args.shopify_status_categories
+    skip_health_check = args.status or args.shopify_status or args.shopify_status_categories or args.wordpress_status or args.wordpress_status_categories
     if not skip_health_check:
         health = asyncio.run(health_check(verbose=args.verbose))
         if not health["success"]:
@@ -1348,6 +1453,139 @@ Examples:
             sys.exit(1)
         from tools.shopify_sync import show_category_sync_status
         asyncio.run(show_category_sync_status())
+
+    elif args.shopify_import_categories:
+        if not ENABLE_SHOPIFY_SYNC:
+            print("Shopify sync is not enabled. Set ENABLE_SHOPIFY_SYNC=true in .env")
+            sys.exit(1)
+        from tools.shopify_sync import import_categories_from_shopify
+        result = asyncio.run(import_categories_from_shopify(force_pull=args.force_pull))
+        print(f"\nImported: {result['imported']} | Updated: {result['updated']} | Skipped: {result['skipped']}")
+
+    elif args.shopify_import_tags:
+        if not ENABLE_SHOPIFY_SYNC:
+            print("Shopify sync is not enabled. Set ENABLE_SHOPIFY_SYNC=true in .env")
+            sys.exit(1)
+        from tools.shopify_sync import import_tags_from_shopify
+        result = asyncio.run(import_tags_from_shopify(force_pull=args.force_pull))
+        print(f"\nImported: {result['imported']} | Updated: {result['updated']} | Skipped: {result['skipped']}")
+
+    elif args.shopify_import_posts:
+        if not ENABLE_SHOPIFY_SYNC:
+            print("Shopify sync is not enabled. Set ENABLE_SHOPIFY_SYNC=true in .env")
+            sys.exit(1)
+        from tools.shopify_sync import import_posts_from_shopify
+        result = asyncio.run(import_posts_from_shopify(force_pull=args.force_pull))
+        print(f"\nImported: {result['imported']} | Updated: {result['updated']} | Skipped: {result['skipped']}")
+
+    elif args.shopify_import_all:
+        if not ENABLE_SHOPIFY_SYNC:
+            print("Shopify sync is not enabled. Set ENABLE_SHOPIFY_SYNC=true in .env")
+            sys.exit(1)
+        from tools.shopify_sync import import_all_from_shopify
+        result = asyncio.run(import_all_from_shopify(force_pull=args.force_pull))
+        print(f"\n=== Shopify Import Summary ===")
+        print(f"Categories - Imported: {result['categories']['imported']} | Updated: {result['categories']['updated']} | Skipped: {result['categories']['skipped']}")
+        print(f"Tags       - Imported: {result['tags']['imported']} | Updated: {result['tags']['updated']} | Skipped: {result['tags']['skipped']}")
+        print(f"Posts      - Imported: {result['posts']['imported']} | Updated: {result['posts']['updated']} | Skipped: {result['posts']['skipped']}")
+
+    # WordPress sync commands
+    elif args.wordpress_sync_categories:
+        if not ENABLE_WORDPRESS_SYNC:
+            print("WordPress sync is not enabled. Set ENABLE_WORDPRESS_SYNC=true in .env")
+            sys.exit(1)
+        from tools.wordpress_sync import sync_all_categories as wp_sync_all_categories
+        result = asyncio.run(wp_sync_all_categories(force=args.force))
+        print(f"\nSynced: {result['synced']} | Failed: {result['failed']} | Skipped: {result['skipped']}")
+
+    elif args.wordpress_sync_category:
+        if not ENABLE_WORDPRESS_SYNC:
+            print("WordPress sync is not enabled. Set ENABLE_WORDPRESS_SYNC=true in .env")
+            sys.exit(1)
+        from tools.wordpress_sync import sync_category_by_slug as wp_sync_category_by_slug
+        success = asyncio.run(wp_sync_category_by_slug(args.wordpress_sync_category, force=args.force))
+        sys.exit(0 if success else 1)
+
+    elif args.wordpress_sync:
+        if not ENABLE_WORDPRESS_SYNC:
+            print("WordPress sync is not enabled. Set ENABLE_WORDPRESS_SYNC=true in .env")
+            sys.exit(1)
+        from tools.wordpress_sync import sync_post_by_slug as wp_sync_post_by_slug
+        success = asyncio.run(wp_sync_post_by_slug(args.wordpress_sync, force=args.force))
+        sys.exit(0 if success else 1)
+
+    elif args.wordpress_sync_id:
+        if not ENABLE_WORDPRESS_SYNC:
+            print("WordPress sync is not enabled. Set ENABLE_WORDPRESS_SYNC=true in .env")
+            sys.exit(1)
+        from tools.wordpress_sync import sync_post_by_id as wp_sync_post_by_id
+        success = asyncio.run(wp_sync_post_by_id(args.wordpress_sync_id, force=args.force))
+        sys.exit(0 if success else 1)
+
+    elif args.wordpress_sync_all:
+        if not ENABLE_WORDPRESS_SYNC:
+            print("WordPress sync is not enabled. Set ENABLE_WORDPRESS_SYNC=true in .env")
+            sys.exit(1)
+        from tools.wordpress_sync import sync_all_posts as wp_sync_all_posts
+        result = asyncio.run(wp_sync_all_posts(force=args.force))
+        print(f"\nSynced: {result['synced']} | Failed: {result['failed']} | Skipped: {result['skipped']}")
+
+    elif args.wordpress_sync_recent:
+        if not ENABLE_WORDPRESS_SYNC:
+            print("WordPress sync is not enabled. Set ENABLE_WORDPRESS_SYNC=true in .env")
+            sys.exit(1)
+        from tools.wordpress_sync import sync_recent as wp_sync_recent
+        result = asyncio.run(wp_sync_recent(args.wordpress_sync_recent, force=args.force))
+        print(f"\nSynced: {result['synced']} | Failed: {result['failed']} | Skipped: {result['skipped']}")
+
+    elif args.wordpress_status:
+        if not ENABLE_WORDPRESS_SYNC:
+            print("WordPress sync is not enabled. Set ENABLE_WORDPRESS_SYNC=true in .env")
+            sys.exit(1)
+        from tools.wordpress_sync import show_sync_status as wp_show_sync_status
+        asyncio.run(wp_show_sync_status())
+
+    elif args.wordpress_status_categories:
+        if not ENABLE_WORDPRESS_SYNC:
+            print("WordPress sync is not enabled. Set ENABLE_WORDPRESS_SYNC=true in .env")
+            sys.exit(1)
+        from tools.wordpress_sync import show_category_sync_status as wp_show_category_sync_status
+        asyncio.run(wp_show_category_sync_status())
+
+    elif args.wordpress_import_categories:
+        if not ENABLE_WORDPRESS_SYNC:
+            print("WordPress sync is not enabled. Set ENABLE_WORDPRESS_SYNC=true in .env")
+            sys.exit(1)
+        from tools.wordpress_sync import import_categories_from_wordpress
+        result = asyncio.run(import_categories_from_wordpress(force_pull=args.force_pull))
+        print(f"\nImported: {result['imported']} | Updated: {result['updated']} | Skipped: {result['skipped']}")
+
+    elif args.wordpress_import_tags:
+        if not ENABLE_WORDPRESS_SYNC:
+            print("WordPress sync is not enabled. Set ENABLE_WORDPRESS_SYNC=true in .env")
+            sys.exit(1)
+        from tools.wordpress_sync import import_tags_from_wordpress
+        result = asyncio.run(import_tags_from_wordpress(force_pull=args.force_pull))
+        print(f"\nImported: {result['imported']} | Updated: {result['updated']} | Skipped: {result['skipped']}")
+
+    elif args.wordpress_import_posts:
+        if not ENABLE_WORDPRESS_SYNC:
+            print("WordPress sync is not enabled. Set ENABLE_WORDPRESS_SYNC=true in .env")
+            sys.exit(1)
+        from tools.wordpress_sync import import_posts_from_wordpress
+        result = asyncio.run(import_posts_from_wordpress(force_pull=args.force_pull))
+        print(f"\nImported: {result['imported']} | Updated: {result['updated']} | Skipped: {result['skipped']}")
+
+    elif args.wordpress_import_all:
+        if not ENABLE_WORDPRESS_SYNC:
+            print("WordPress sync is not enabled. Set ENABLE_WORDPRESS_SYNC=true in .env")
+            sys.exit(1)
+        from tools.wordpress_sync import import_all_from_wordpress
+        result = asyncio.run(import_all_from_wordpress(force_pull=args.force_pull))
+        print(f"\n=== WordPress Import Summary ===")
+        print(f"Categories - Imported: {result['categories']['imported']} | Updated: {result['categories']['updated']} | Skipped: {result['categories']['skipped']}")
+        print(f"Tags       - Imported: {result['tags']['imported']} | Updated: {result['tags']['updated']} | Skipped: {result['tags']['skipped']}")
+        print(f"Posts      - Imported: {result['posts']['imported']} | Updated: {result['posts']['updated']} | Skipped: {result['posts']['skipped']}")
 
     elif args.autonomous:
         print(f"Autonomous Mode: Processing up to {args.count} idea(s) from queue")

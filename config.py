@@ -94,6 +94,30 @@ SHOPIFY_DEFAULT_AUTHOR = os.getenv("SHOPIFY_DEFAULT_AUTHOR", "")
 SHOPIFY_SYNC_ON_PUBLISH = os.getenv("SHOPIFY_SYNC_ON_PUBLISH", "true").lower() == "true"
 
 # ===========================================
+# WordPress Sync Configuration
+# ===========================================
+# Enable WordPress sync to push posts from Supabase to WordPress
+ENABLE_WORDPRESS_SYNC = os.getenv("ENABLE_WORDPRESS_SYNC", "false").lower() == "true"
+
+# WordPress site URL (no trailing slash)
+WORDPRESS_URL = os.getenv("WORDPRESS_URL", "")
+
+# WordPress Application Password credentials
+# Create at: WP Admin → Users → Profile → Application Passwords
+WORDPRESS_USERNAME = os.getenv("WORDPRESS_USERNAME", "")
+WORDPRESS_APP_PASSWORD = os.getenv("WORDPRESS_APP_PASSWORD", "")
+
+# Default author ID for WordPress posts (WordPress user ID)
+WORDPRESS_DEFAULT_AUTHOR_ID = os.getenv("WORDPRESS_DEFAULT_AUTHOR_ID", "1")
+
+# Whether to automatically sync to WordPress when saving posts
+WORDPRESS_SYNC_ON_PUBLISH = os.getenv("WORDPRESS_SYNC_ON_PUBLISH", "true").lower() == "true"
+
+# SEO plugin for WordPress (determines which meta fields to populate)
+# Options: yoast, rankmath, aioseo, seopress, flavor, none
+WORDPRESS_SEO_PLUGIN = os.getenv("WORDPRESS_SEO_PLUGIN", "none")
+
+# ===========================================
 # Link Building Configuration
 # ===========================================
 # Enable link building tools (internal link suggestions + URL validation)

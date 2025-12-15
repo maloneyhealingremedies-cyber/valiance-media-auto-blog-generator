@@ -912,6 +912,165 @@ _blog_cache: dict[str, str] = {}  # handle -> gid
 _article_cache: dict[str, str] = {}  # (blog_gid, handle) -> article_gid
 
 
+async def fetch_all_shopify_blogs() -> list:
+    """
+    Fetch all blogs from Shopify.
+
+    Returns a list of blog dicts with: id (gid), title, handle
+    Uses cursor-based pagination.
+
+    Returns:
+        List of Shopify blog dicts, or empty list on error
+    """
+    all_blogs = []
+    cursor = None
+    page_size = 100
+
+    while True:
+        # Build query with optional cursor
+        after_clause = f', after: "{cursor}"' if cursor else ""
+
+        query = f"""
+        query FetchBlogs {{
+            blogs(first: {page_size}{after_clause}) {{
+                pageInfo {{
+                    hasNextPage
+                    endCursor
+                }}
+                nodes {{
+                    id
+                    title
+                    handle
+                }}
+            }}
+        }}
+        """
+
+        result = await execute_shopify_graphql(query)
+
+        if "error" in result:
+            if not all_blogs:  # Only show error if no blogs fetched yet
+                print(f"Error fetching blogs: {result['error']}")
+            break
+
+        blogs_data = result.get("blogs", {})
+        nodes = blogs_data.get("nodes", [])
+
+        if not nodes:
+            break
+
+        all_blogs.extend(nodes)
+
+        # Check pagination
+        page_info = blogs_data.get("pageInfo", {})
+        if not page_info.get("hasNextPage"):
+            break
+
+        cursor = page_info.get("endCursor")
+        if not cursor:
+            break
+
+    return all_blogs
+
+
+async def fetch_all_shopify_articles() -> list:
+    """
+    Fetch all articles from all blogs in Shopify.
+
+    Returns a list of article dicts with full details including:
+    id (gid), title, handle, contentHtml, excerpt, publishedAt,
+    blog (gid, handle), image, tags, author
+
+    Uses cursor-based pagination for each blog.
+
+    Returns:
+        List of Shopify article dicts, or empty list on error
+    """
+    # First, fetch all blogs
+    blogs = await fetch_all_shopify_blogs()
+    if not blogs:
+        return []
+
+    all_articles = []
+
+    for blog in blogs:
+        blog_gid = blog.get("id")
+        blog_handle = blog.get("handle", "unknown")
+
+        cursor = None
+        page_size = 50
+
+        while True:
+            after_clause = f', after: "{cursor}"' if cursor else ""
+
+            query = f"""
+            query FetchArticles {{
+                blog(id: "{blog_gid}") {{
+                    articles(first: {page_size}{after_clause}) {{
+                        pageInfo {{
+                            hasNextPage
+                            endCursor
+                        }}
+                        nodes {{
+                            id
+                            title
+                            handle
+                            contentHtml
+                            excerpt
+                            excerptHtml
+                            publishedAt
+                            tags
+                            blog {{
+                                id
+                                handle
+                                title
+                            }}
+                            image {{
+                                url
+                                altText
+                            }}
+                            author {{
+                                name
+                            }}
+                            seo {{
+                                title
+                                description
+                            }}
+                        }}
+                    }}
+                }}
+            }}
+            """
+
+            result = await execute_shopify_graphql(query)
+
+            if "error" in result:
+                break
+
+            blog_data = result.get("blog", {})
+            if not blog_data:
+                break
+
+            articles_data = blog_data.get("articles", {})
+            nodes = articles_data.get("nodes", [])
+
+            if not nodes:
+                break
+
+            all_articles.extend(nodes)
+
+            # Check pagination
+            page_info = articles_data.get("pageInfo", {})
+            if not page_info.get("hasNextPage"):
+                break
+
+            cursor = page_info.get("endCursor")
+            if not cursor:
+                break
+
+    return all_articles
+
+
 async def find_blog_by_handle(handle: str) -> Optional[str]:
     """
     Find an existing Shopify blog by handle.

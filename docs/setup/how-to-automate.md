@@ -33,6 +33,8 @@ Go to your fork's **Settings** → **Secrets and variables** → **Actions** →
 | `GEMINI_API_KEY` | If using images | Google AI API key |
 | `SHOPIFY_CLIENT_ID` | If using Shopify | Shopify OAuth client ID |
 | `SHOPIFY_CLIENT_SECRET` | If using Shopify | Shopify OAuth client secret |
+| `WORDPRESS_USERNAME` | If using WordPress | WordPress username |
+| `WORDPRESS_APP_PASSWORD` | If using WordPress | WordPress Application Password |
 
 ---
 
@@ -94,6 +96,16 @@ Go to **Settings** → **Secrets and variables** → **Actions** → **Variables
 | `SHOPIFY_API_VERSION` | `2025-01` | Shopify API version |
 | `SHOPIFY_DEFAULT_AUTHOR` | | Author name for Shopify articles |
 | `SHOPIFY_SYNC_ON_PUBLISH` | `true` | Auto-sync on publish |
+
+### WordPress Sync
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `ENABLE_WORDPRESS_SYNC` | `false` | Enable WordPress sync |
+| `WORDPRESS_URL` | | Your WordPress site URL |
+| `WORDPRESS_DEFAULT_AUTHOR_ID` | `1` | WordPress user ID for posts |
+| `WORDPRESS_SYNC_ON_PUBLISH` | `true` | Auto-sync on publish |
+| `WORDPRESS_SEO_PLUGIN` | `none` | SEO plugin: yoast, rankmath, aioseo, seopress, flavor, none |
 
 ---
 

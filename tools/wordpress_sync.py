@@ -1,9 +1,9 @@
 """
-Shopify Sync - CLI handlers for syncing blog content to Shopify
+WordPress Sync - CLI handlers for syncing blog content to WordPress
 
 This module provides functions for:
-1. Syncing categories to Shopify Blogs
-2. Syncing posts to Shopify Articles
+1. Syncing categories to WordPress Categories
+2. Syncing posts to WordPress Posts
 3. Displaying sync status
 4. Bulk sync operations
 """
@@ -16,14 +16,16 @@ import os
 
 # Add parent directory to path for imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from config import SUPABASE_URL, get_supabase_headers, SHOPIFY_DEFAULT_AUTHOR
-from tools.shopify_tools import (
-    sync_category_to_shopify,
-    sync_post_to_shopify,
-    get_shopify_visibility_label,
+from config import SUPABASE_URL, get_supabase_headers, WORDPRESS_DEFAULT_AUTHOR_ID
+from tools.wordpress_tools import (
+    sync_category_to_wordpress,
+    sync_post_to_wordpress,
+    get_wordpress_visibility_label,
     clear_sync_cache,
-    fetch_all_shopify_blogs,
-    fetch_all_shopify_articles,
+    fetch_all_wordpress_categories,
+    fetch_all_wordpress_tags,
+    fetch_all_wordpress_posts,
+    fetch_wordpress_media,
 )
 
 
@@ -82,8 +84,8 @@ async def get_category_by_id(category_id: str) -> Optional[dict]:
         return None
 
 
-async def update_category_shopify_fields(category_id: str, shopify_blog_gid: str) -> bool:
-    """Update category with Shopify sync info."""
+async def update_category_wordpress_fields(category_id: str, wordpress_category_id: int) -> bool:
+    """Update category with WordPress sync info."""
     try:
         async with aiohttp.ClientSession() as session:
             headers = get_supabase_headers()
@@ -91,8 +93,8 @@ async def update_category_shopify_fields(category_id: str, shopify_blog_gid: str
                 f"{SUPABASE_URL}/rest/v1/blog_categories?id=eq.{category_id}",
                 headers=headers,
                 json={
-                    "shopify_blog_gid": shopify_blog_gid,
-                    "shopify_synced_at": datetime.utcnow().isoformat(),
+                    "wordpress_category_id": wordpress_category_id,
+                    "wordpress_synced_at": datetime.utcnow().isoformat(),
                 }
             ) as resp:
                 return resp.status in [200, 204]
@@ -106,7 +108,7 @@ async def get_all_posts() -> list:
         async with aiohttp.ClientSession() as session:
             headers = get_supabase_headers()
             async with session.get(
-                f"{SUPABASE_URL}/rest/v1/blog_posts?select=*,blog_categories(id,slug,name,shopify_blog_gid),blog_authors(id,slug,name)&order=updated_at.desc",
+                f"{SUPABASE_URL}/rest/v1/blog_posts?select=*,blog_categories(id,slug,name,wordpress_category_id),blog_authors(id,slug,name)&order=updated_at.desc",
                 headers=headers
             ) as resp:
                 if resp.status == 200:
@@ -123,7 +125,7 @@ async def get_post_by_slug(slug: str) -> Optional[dict]:
         async with aiohttp.ClientSession() as session:
             headers = get_supabase_headers()
             async with session.get(
-                f"{SUPABASE_URL}/rest/v1/blog_posts?slug=eq.{slug}&select=*,blog_categories(id,slug,name,shopify_blog_gid),blog_authors(id,slug,name)&limit=1",
+                f"{SUPABASE_URL}/rest/v1/blog_posts?slug=eq.{slug}&select=*,blog_categories(id,slug,name,wordpress_category_id),blog_authors(id,slug,name)&limit=1",
                 headers=headers
             ) as resp:
                 if resp.status == 200:
@@ -140,7 +142,7 @@ async def get_post_by_id(post_id: str) -> Optional[dict]:
         async with aiohttp.ClientSession() as session:
             headers = get_supabase_headers()
             async with session.get(
-                f"{SUPABASE_URL}/rest/v1/blog_posts?id=eq.{post_id}&select=*,blog_categories(id,slug,name,shopify_blog_gid),blog_authors(id,slug,name)&limit=1",
+                f"{SUPABASE_URL}/rest/v1/blog_posts?id=eq.{post_id}&select=*,blog_categories(id,slug,name,wordpress_category_id),blog_authors(id,slug,name)&limit=1",
                 headers=headers
             ) as resp:
                 if resp.status == 200:
@@ -168,21 +170,21 @@ async def get_post_tags(post_id: str) -> list:
         return []
 
 
-async def update_post_shopify_fields(
+async def update_post_wordpress_fields(
     post_id: str,
-    shopify_article_id: Optional[str] = None,
+    wordpress_post_id: Optional[int] = None,
     error: Optional[str] = None
 ) -> bool:
-    """Update post with Shopify sync info."""
+    """Update post with WordPress sync info."""
     try:
         update_data = {
-            "shopify_synced_at": datetime.utcnow().isoformat(),
+            "wordpress_synced_at": datetime.utcnow().isoformat(),
         }
-        if shopify_article_id:
-            update_data["shopify_article_id"] = shopify_article_id
-            update_data["shopify_sync_error"] = None
+        if wordpress_post_id:
+            update_data["wordpress_post_id"] = wordpress_post_id
+            update_data["wordpress_sync_error"] = None
         if error:
-            update_data["shopify_sync_error"] = error
+            update_data["wordpress_sync_error"] = error
 
         async with aiohttp.ClientSession() as session:
             headers = get_supabase_headers()
@@ -202,15 +204,15 @@ async def update_post_shopify_fields(
 
 async def sync_all_categories(force: bool = False) -> dict:
     """
-    Sync all categories to Shopify Blogs.
+    Sync all categories to WordPress.
 
     Args:
-        force: Force re-sync even if already synced (updates existing blogs)
+        force: Force re-sync even if already synced (updates existing)
 
     Returns:
         dict with keys: synced, failed, skipped
     """
-    clear_sync_cache()  # Prevent duplicates across sync operations
+    clear_sync_cache()
     categories = await get_all_categories()
 
     if not categories:
@@ -231,33 +233,38 @@ async def sync_all_categories(force: bool = False) -> dict:
         cat_id = cat['id']
         name = cat['name']
         slug = cat['slug']
-        existing_gid = cat.get('shopify_blog_gid')
-        seo = cat.get('seo')  # SEO data from Supabase
+        description = cat.get('description', '')
+        existing_id = cat.get('wordpress_category_id')
+        seo = cat.get('seo')
 
         # Skip if already synced and not forcing
-        if existing_gid and not force:
+        if existing_id and not force:
             print(f"  [SKIP] {name} - already synced")
             skipped += 1
             continue
 
         # Print status
-        if force and existing_gid:
+        if force and existing_id:
             print(f"  Syncing: {name} (force)...", end=" ")
         else:
             print(f"  Syncing: {name}...", end=" ")
 
-        result = await sync_category_to_shopify(
+        result = await sync_category_to_wordpress(
             category_id=cat_id,
             name=name,
             slug=slug,
-            existing_blog_gid=existing_gid,  # Pass existing GID for update, fallback handles stale IDs
+            description=description,
+            existing_wp_id=existing_id,
             seo=seo,
         )
 
         if result.get("success"):
-            # Update Supabase with Shopify GID
-            await update_category_shopify_fields(cat_id, result["shopify_blog_gid"])
-            print(f"OK ({result.get('handle', slug)})")
+            await update_category_wordpress_fields(cat_id, result["wordpress_category_id"])
+            seo_warning = result.get("seo_warning")
+            if seo_warning:
+                print(f"OK (ID: {result['wordpress_category_id']}) [SEO: {seo_warning}]")
+            else:
+                print(f"OK (ID: {result['wordpress_category_id']})")
             synced += 1
         else:
             print(f"FAILED: {result.get('error', 'Unknown error')}")
@@ -283,62 +290,68 @@ async def sync_category_by_slug(slug: str, force: bool = False) -> bool:
         print(f"Category not found: {slug}")
         return False
 
-    existing_gid = category.get('shopify_blog_gid')
+    existing_id = category.get('wordpress_category_id')
 
-    if existing_gid and not force:
+    if existing_id and not force:
         print(f"Category '{category['name']}' already synced. Use --force to re-sync.")
         return True
 
     print(f"Syncing category: {category['name']}...")
 
-    result = await sync_category_to_shopify(
+    result = await sync_category_to_wordpress(
         category_id=category['id'],
         name=category['name'],
         slug=slug,
-        existing_blog_gid=existing_gid,  # Pass existing GID for update, fallback handles stale IDs
+        description=category.get('description', ''),
+        existing_wp_id=existing_id,
         seo=category.get('seo'),
     )
 
     if result.get("success"):
-        await update_category_shopify_fields(category['id'], result["shopify_blog_gid"])
-        print(f"Synced: {result.get('handle', slug)}")
+        await update_category_wordpress_fields(category['id'], result["wordpress_category_id"])
+        seo_warning = result.get("seo_warning")
+        if seo_warning:
+            print(f"Synced: ID {result['wordpress_category_id']} [SEO: {seo_warning}]")
+        else:
+            print(f"Synced: ID {result['wordpress_category_id']}")
         return True
     else:
         print(f"Failed: {result.get('error', 'Unknown error')}")
         return False
 
 
-async def ensure_category_synced(category_id: str) -> Optional[str]:
+async def ensure_category_synced(category_id: str) -> Optional[int]:
     """
-    Ensure a category is synced to Shopify, syncing if needed.
+    Ensure a category is synced to WordPress, syncing if needed.
 
     Args:
         category_id: Supabase category UUID
 
     Returns:
-        Shopify blog GID if successful, None otherwise
+        WordPress category ID if successful, None otherwise
     """
     category = await get_category_by_id(category_id)
 
     if not category:
         return None
 
-    existing_gid = category.get('shopify_blog_gid')
+    existing_id = category.get('wordpress_category_id')
 
-    if existing_gid:
-        return existing_gid
+    if existing_id:
+        return existing_id
 
     # Sync the category
-    result = await sync_category_to_shopify(
+    result = await sync_category_to_wordpress(
         category_id=category_id,
         name=category['name'],
         slug=category['slug'],
+        description=category.get('description', ''),
         seo=category.get('seo'),
     )
 
     if result.get("success"):
-        await update_category_shopify_fields(category_id, result["shopify_blog_gid"])
-        return result["shopify_blog_gid"]
+        await update_category_wordpress_fields(category_id, result["wordpress_category_id"])
+        return result["wordpress_category_id"]
 
     return None
 
@@ -402,19 +415,19 @@ async def _sync_single_post(post: dict, force: bool = False) -> str:
     title = post['title']
     slug = post['slug']
     status = post.get('status', 'draft')
-    existing_article_id = post.get('shopify_article_id')
+    existing_wp_id = post.get('wordpress_post_id')
     updated_at = post.get('updated_at', '')
-    synced_at = post.get('shopify_synced_at', '')
+    synced_at = post.get('wordpress_synced_at', '')
 
     # Check if sync is needed
     needs_sync = (
         force or
-        not existing_article_id or
+        not existing_wp_id or
         (updated_at and (not synced_at or updated_at > synced_at))
     )
 
     if not needs_sync:
-        visibility = get_shopify_visibility_label(status)
+        visibility = get_wordpress_visibility_label(status)
         print(f"  [SKIP] {title[:50]} - up-to-date ({visibility})")
         return "skipped"
 
@@ -424,60 +437,61 @@ async def _sync_single_post(post: dict, force: bool = False) -> str:
         print(f"  [FAIL] {title[:50]} - no category assigned")
         return "failed"
 
-    shopify_blog_gid = category.get('shopify_blog_gid')
-    if not shopify_blog_gid:
+    wordpress_category_id = category.get('wordpress_category_id')
+    if not wordpress_category_id:
         print(f"  Syncing category '{category['name']}' first...")
-        shopify_blog_gid = await ensure_category_synced(category['id'])
-        if not shopify_blog_gid:
+        wordpress_category_id = await ensure_category_synced(category['id'])
+        if not wordpress_category_id:
             print(f"  [FAIL] {title[:50]} - category sync failed")
             return "failed"
 
-    # Get author name
+    # Get author ID (WordPress uses integer IDs)
     author = post.get('blog_authors', {})
-    author_name = author.get('name') if author else SHOPIFY_DEFAULT_AUTHOR
+    # WordPress requires user ID, not name - use default
+    author_id = WORDPRESS_DEFAULT_AUTHOR_ID
 
     # Get tags
     tags = await get_post_tags(post_id)
 
-    visibility = get_shopify_visibility_label(status)
+    visibility = get_wordpress_visibility_label(status)
     print(f"  Syncing: {title[:50]}... ({visibility})", end=" ")
 
-    result = await sync_post_to_shopify(
+    result = await sync_post_to_wordpress(
         post_id=post_id,
         title=title,
         slug=slug,
         excerpt=post.get('excerpt', ''),
         content=post.get('content', []),
         status=status,
-        shopify_blog_gid=shopify_blog_gid,
-        author_name=author_name,
+        wordpress_category_id=wordpress_category_id,
+        author_id=author_id,
         featured_image=post.get('featured_image'),
         featured_image_alt=post.get('featured_image_alt'),
         seo=post.get('seo'),
         scheduled_at=post.get('scheduled_at'),
         tags=tags,
-        existing_shopify_id=existing_article_id,
+        existing_wordpress_id=existing_wp_id,
     )
 
     if result.get("success"):
-        await update_post_shopify_fields(post_id, shopify_article_id=result["shopify_article_id"])
+        await update_post_wordpress_fields(post_id, wordpress_post_id=result["wordpress_post_id"])
         print("OK")
         return "synced"
     else:
         error = result.get('error', 'Unknown error')
-        await update_post_shopify_fields(post_id, error=error)
+        await update_post_wordpress_fields(post_id, error=error)
         print(f"FAILED: {error}")
         return "failed"
 
 
 def _needs_sync(post: dict) -> bool:
     """Check if a post needs syncing."""
-    shopify_article_id = post.get('shopify_article_id')
+    wordpress_post_id = post.get('wordpress_post_id')
     updated_at = post.get('updated_at', '')
-    synced_at = post.get('shopify_synced_at', '')
+    synced_at = post.get('wordpress_synced_at', '')
 
     # Never synced
-    if not shopify_article_id:
+    if not wordpress_post_id:
         return True
 
     # Updated since last sync
@@ -488,17 +502,14 @@ def _needs_sync(post: dict) -> bool:
 
 
 async def get_posts_needing_sync() -> list:
-    """Get all posts that need syncing to Shopify."""
+    """Get all posts that need syncing to WordPress."""
     posts = await get_all_posts()
     return [p for p in posts if _needs_sync(p)]
 
 
 async def sync_all_posts(force: bool = False) -> dict:
     """
-    Sync all posts to Shopify.
-
-    Fetches ALL posts and syncs each one. Use force=True to re-sync
-    posts that appear up-to-date.
+    Sync all posts to WordPress.
 
     Args:
         force: Force re-sync even if post appears up-to-date
@@ -506,7 +517,7 @@ async def sync_all_posts(force: bool = False) -> dict:
     Returns:
         dict with keys: synced, failed, skipped
     """
-    clear_sync_cache()  # Prevent duplicates across sync operations
+    clear_sync_cache()
     posts = await get_all_posts()
 
     if not posts:
@@ -535,14 +546,10 @@ async def sync_pending_posts() -> dict:
     """
     Sync only posts that need syncing (smart sync).
 
-    A post needs sync if:
-    - shopify_article_id IS NULL (never synced), OR
-    - updated_at > shopify_synced_at (updated since last sync)
-
     Returns:
         dict with keys: synced, failed, skipped
     """
-    clear_sync_cache()  # Prevent duplicates across sync operations
+    clear_sync_cache()
     posts = await get_posts_needing_sync()
 
     if not posts:
@@ -575,7 +582,7 @@ async def sync_recent(n: int, force: bool = False) -> dict:
     Returns:
         dict with keys: synced, failed, skipped
     """
-    clear_sync_cache()  # Prevent duplicates across sync operations
+    clear_sync_cache()
     posts = await get_all_posts()
     posts = posts[:n]  # Already sorted by updated_at desc
 
@@ -618,15 +625,15 @@ def _format_datetime(dt_str: str) -> str:
 
 def _get_sync_status(post: dict) -> tuple:
     """Get sync status emoji and label for a post."""
-    shopify_article_id = post.get('shopify_article_id')
-    shopify_sync_error = post.get('shopify_sync_error')
+    wordpress_post_id = post.get('wordpress_post_id')
+    wordpress_sync_error = post.get('wordpress_sync_error')
     updated_at = post.get('updated_at', '')
-    synced_at = post.get('shopify_synced_at', '')
+    synced_at = post.get('wordpress_synced_at', '')
 
-    if shopify_sync_error:
-        return ("ERROR", shopify_sync_error[:30])
+    if wordpress_sync_error:
+        return ("ERROR", wordpress_sync_error[:30])
 
-    if not shopify_article_id:
+    if not wordpress_post_id:
         return ("NOT SYNCED", "")
 
     if updated_at and synced_at and updated_at > synced_at:
@@ -645,18 +652,18 @@ async def show_sync_status() -> None:
 
     # Header
     print()
-    print(f"{'TITLE':<42} {'STATUS':<10} {'SHOPIFY':<10} {'SYNC STATUS':<14} {'LAST EDIT':<18} {'LAST SYNC':<18}")
-    print("-" * 112)
+    print(f"{'TITLE':<42} {'STATUS':<10} {'WORDPRESS':<12} {'SYNC STATUS':<14} {'LAST EDIT':<18} {'LAST SYNC':<18}")
+    print("-" * 114)
 
     for post in posts:
         title = post.get('title', '')[:40]
         status = post.get('status', 'draft')
-        shopify_vis = get_shopify_visibility_label(status)
+        wp_vis = get_wordpress_visibility_label(status)
         sync_status, sync_note = _get_sync_status(post)
         updated_at = _format_datetime(post.get('updated_at', ''))
-        synced_at = _format_datetime(post.get('shopify_synced_at', ''))
+        synced_at = _format_datetime(post.get('wordpress_synced_at', ''))
 
-        # Color/emoji for sync status
+        # Display sync status
         if sync_status == "SYNCED":
             sync_display = "SYNCED"
         elif sync_status == "STALE":
@@ -666,15 +673,15 @@ async def show_sync_status() -> None:
         else:
             sync_display = "NOT SYNCED"
 
-        print(f"{title:<42} {status:<10} {shopify_vis:<10} {sync_display:<14} {updated_at:<18} {synced_at:<18}")
+        print(f"{title:<42} {status:<10} {wp_vis:<12} {sync_display:<14} {updated_at:<18} {synced_at:<18}")
 
     print()
 
     # Summary counts
-    synced_count = sum(1 for p in posts if p.get('shopify_article_id') and not _needs_sync(p))
-    stale_count = sum(1 for p in posts if p.get('shopify_article_id') and _needs_sync(p))
-    not_synced_count = sum(1 for p in posts if not p.get('shopify_article_id'))
-    error_count = sum(1 for p in posts if p.get('shopify_sync_error'))
+    synced_count = sum(1 for p in posts if p.get('wordpress_post_id') and not _needs_sync(p))
+    stale_count = sum(1 for p in posts if p.get('wordpress_post_id') and _needs_sync(p))
+    not_synced_count = sum(1 for p in posts if not p.get('wordpress_post_id'))
+    error_count = sum(1 for p in posts if p.get('wordpress_sync_error'))
 
     print(f"Total: {len(posts)} | Synced: {synced_count} | Stale: {stale_count} | Not Synced: {not_synced_count} | Errors: {error_count}")
 
@@ -689,27 +696,29 @@ async def show_category_sync_status() -> None:
 
     # Header
     print()
-    print(f"{'NAME':<30} {'SLUG':<25} {'SYNC STATUS':<15} {'LAST SYNC':<18}")
-    print("-" * 90)
+    print(f"{'NAME':<30} {'SLUG':<25} {'SYNC STATUS':<15} {'WP ID':<10} {'LAST SYNC':<18}")
+    print("-" * 100)
 
     for cat in categories:
         name = cat.get('name', '')[:28]
         slug = cat.get('slug', '')[:23]
-        shopify_gid = cat.get('shopify_blog_gid')
-        synced_at = _format_datetime(cat.get('shopify_synced_at', ''))
+        wp_id = cat.get('wordpress_category_id')
+        synced_at = _format_datetime(cat.get('wordpress_synced_at', ''))
 
-        if shopify_gid:
+        if wp_id:
             sync_status = "SYNCED"
+            wp_id_str = str(wp_id)
         else:
             sync_status = "NOT SYNCED"
+            wp_id_str = "—"
             synced_at = "—"
 
-        print(f"{name:<30} {slug:<25} {sync_status:<15} {synced_at:<18}")
+        print(f"{name:<30} {slug:<25} {sync_status:<15} {wp_id_str:<10} {synced_at:<18}")
 
     print()
 
     # Summary
-    synced_count = sum(1 for c in categories if c.get('shopify_blog_gid'))
+    synced_count = sum(1 for c in categories if c.get('wordpress_category_id'))
     not_synced_count = len(categories) - synced_count
 
     print(f"Total: {len(categories)} | Synced: {synced_count} | Not Synced: {not_synced_count}")
@@ -718,6 +727,14 @@ async def show_category_sync_status() -> None:
 # =============================================================================
 # IMPORT FUNCTIONS (CMS -> Supabase)
 # =============================================================================
+
+def _decode_html_entities(text: str) -> str:
+    """Decode HTML entities in WordPress category names."""
+    import html
+    if not text:
+        return text
+    return html.unescape(text)
+
 
 async def _get_category_by_slug_supabase(slug: str) -> Optional[dict]:
     """Check if a category exists in Supabase by slug."""
@@ -774,87 +791,86 @@ async def _update_category_supabase(category_id: str, category_data: dict) -> bo
         return False
 
 
-async def import_categories_from_shopify(force_pull: bool = False) -> dict:
+async def import_categories_from_wordpress(force_pull: bool = False) -> dict:
     """
-    Import categories (blogs) from Shopify into Supabase.
+    Import categories from WordPress into Supabase.
 
-    This is a reverse sync - pulling existing blogs from Shopify
-    into Supabase as categories. Useful when setting up the generator
-    with an existing Shopify store.
+    This is a reverse sync - pulling existing categories from WordPress
+    into Supabase. Useful when setting up the generator with an existing blog.
 
     Args:
-        force_pull: If True, overwrite existing Supabase categories with Shopify data.
+        force_pull: If True, overwrite existing Supabase categories with WordPress data.
                    If False (default), skip categories that already exist.
 
     Returns:
         dict with keys: imported, updated, skipped, errors
     """
-    print("Fetching blogs from Shopify...")
+    print("Fetching categories from WordPress...")
 
-    shopify_blogs = await fetch_all_shopify_blogs()
+    wp_categories = await fetch_all_wordpress_categories()
 
-    if not shopify_blogs:
-        print("No blogs found in Shopify (or fetch failed).")
+    if not wp_categories:
+        print("No categories found in WordPress (or fetch failed).")
         return {"imported": 0, "updated": 0, "skipped": 0, "errors": []}
 
-    print(f"Found {len(shopify_blogs)} blogs in Shopify\n")
+    print(f"Found {len(wp_categories)} categories in WordPress\n")
 
     imported = 0
     updated = 0
     skipped = 0
     errors = []
 
-    for blog in shopify_blogs:
-        gid = blog.get("id", "")
-        handle = blog.get("handle", "")
-        title = blog.get("title", "")
+    for wp_cat in wp_categories:
+        wp_id = wp_cat.get("id")
+        slug = wp_cat.get("slug", "")
+        name = _decode_html_entities(wp_cat.get("name", ""))
+        description = _decode_html_entities(wp_cat.get("description", ""))
 
-        if not handle:
-            errors.append(f"Blog {gid} has no handle, skipping")
+        if not slug:
+            errors.append(f"Category {wp_id} has no slug, skipping")
             continue
-
-        # Use handle as slug (they're equivalent in Shopify)
-        slug = handle
 
         # Check if category already exists in Supabase
         existing = await _get_category_by_slug_supabase(slug)
 
         if existing:
             if force_pull:
-                # Update existing category with Shopify data
+                # Update existing category with WordPress data
                 update_data = {
-                    "name": title,
-                    "shopify_blog_gid": gid,
-                    "shopify_synced_at": datetime.utcnow().isoformat(),
+                    "name": name,
+                    "wordpress_category_id": wp_id,
+                    "wordpress_synced_at": datetime.utcnow().isoformat(),
                     "updated_at": datetime.utcnow().isoformat(),
                 }
-                # Note: Shopify blogs don't have descriptions
+                # Only update description if WordPress has one
+                if description:
+                    update_data["description"] = description
 
                 success = await _update_category_supabase(existing["id"], update_data)
                 if success:
-                    print(f"  [UPDATE] {title} ({slug})")
+                    print(f"  [UPDATE] {name} ({slug})")
                     updated += 1
                 else:
                     errors.append(f"Failed to update {slug}")
             else:
-                print(f"  [SKIP] {title} ({slug}) - already exists")
+                print(f"  [SKIP] {name} ({slug}) - already exists")
                 skipped += 1
         else:
             # Insert new category
             insert_data = {
                 "slug": slug,
-                "name": title,
-                "description": None,  # Shopify blogs don't have descriptions
-                "shopify_blog_gid": gid,
-                "shopify_synced_at": datetime.utcnow().isoformat(),
+                "name": name,
+                "description": description or None,
+                "wordpress_category_id": wp_id,
+                "wordpress_synced_at": datetime.utcnow().isoformat(),
             }
 
             success, error_msg = await _insert_category_supabase(insert_data)
             if success:
-                print(f"  [IMPORT] {title} ({slug})")
+                print(f"  [IMPORT] {name} ({slug})")
                 imported += 1
             else:
-                print(f"  [FAIL] {title} ({slug}) - {error_msg}")
+                print(f"  [FAIL] {name} ({slug}) - {error_msg}")
                 errors.append(f"Failed to import {slug}: {error_msg}")
 
     # Summary
@@ -874,18 +890,8 @@ async def import_categories_from_shopify(force_pull: bool = False) -> dict:
 
 
 # =============================================================================
-# TAG IMPORT (Shopify → Supabase)
+# TAG IMPORT (WordPress → Supabase)
 # =============================================================================
-
-def _slugify(text: str) -> str:
-    """Convert text to URL-safe slug."""
-    import re
-    slug = text.lower().strip()
-    slug = re.sub(r'[^\w\s-]', '', slug)
-    slug = re.sub(r'[\s_-]+', '-', slug)
-    slug = re.sub(r'^-+|-+$', '', slug)
-    return slug
-
 
 async def _get_tag_by_slug_supabase(slug: str) -> Optional[dict]:
     """Check if a tag exists in Supabase by slug."""
@@ -938,52 +944,42 @@ async def _update_tag_supabase(tag_id: str, update_data: dict) -> bool:
         return False
 
 
-async def import_tags_from_shopify(force_pull: bool = False) -> dict:
+async def import_tags_from_wordpress(force_pull: bool = False) -> dict:
     """
-    Import tags from Shopify into Supabase.
+    Import tags from WordPress into Supabase.
 
-    Shopify doesn't have a dedicated tags API - tags are strings attached to articles.
-    This function fetches all articles and extracts unique tags.
+    This is a reverse sync - pulling existing tags from WordPress
+    into Supabase. Useful when setting up the generator with an existing blog.
 
     Args:
-        force_pull: If True, overwrite existing Supabase tags with Shopify data.
+        force_pull: If True, overwrite existing Supabase tags with WordPress data.
                    If False (default), skip tags that already exist.
 
     Returns:
         dict with keys: imported, updated, skipped, errors
     """
-    print("Fetching articles from Shopify to extract tags...")
+    print("Fetching tags from WordPress...")
 
-    articles = await fetch_all_shopify_articles()
+    wp_tags = await fetch_all_wordpress_tags()
 
-    if not articles:
-        print("No articles found in Shopify (or fetch failed).")
+    if not wp_tags:
+        print("No tags found in WordPress (or fetch failed).")
         return {"imported": 0, "updated": 0, "skipped": 0, "errors": []}
 
-    # Extract unique tags from all articles
-    unique_tags = set()
-    for article in articles:
-        tags = article.get("tags", [])
-        for tag in tags:
-            if tag and tag.strip():
-                unique_tags.add(tag.strip())
-
-    if not unique_tags:
-        print("No tags found in Shopify articles.")
-        return {"imported": 0, "updated": 0, "skipped": 0, "errors": []}
-
-    print(f"Found {len(unique_tags)} unique tags across {len(articles)} articles\n")
+    print(f"Found {len(wp_tags)} tags in WordPress\n")
 
     imported = 0
     updated = 0
     skipped = 0
     errors = []
 
-    for tag_name in sorted(unique_tags):
-        slug = _slugify(tag_name)
+    for wp_tag in wp_tags:
+        wp_id = wp_tag.get("id")
+        slug = wp_tag.get("slug", "")
+        name = _decode_html_entities(wp_tag.get("name", ""))
 
         if not slug:
-            errors.append(f"Tag '{tag_name}' produces empty slug, skipping")
+            errors.append(f"Tag {wp_id} has no slug, skipping")
             continue
 
         # Check if tag already exists in Supabase
@@ -991,33 +987,37 @@ async def import_tags_from_shopify(force_pull: bool = False) -> dict:
 
         if existing:
             if force_pull:
-                # Update existing tag
+                # Update existing tag with WordPress data
                 update_data = {
-                    "name": tag_name,
+                    "name": name,
+                    "wordpress_tag_id": wp_id,
+                    "wordpress_synced_at": datetime.utcnow().isoformat(),
                 }
 
                 success = await _update_tag_supabase(existing["id"], update_data)
                 if success:
-                    print(f"  [UPDATE] {tag_name} ({slug})")
+                    print(f"  [UPDATE] {name} ({slug})")
                     updated += 1
                 else:
                     errors.append(f"Failed to update {slug}")
             else:
-                print(f"  [SKIP] {tag_name} ({slug}) - already exists")
+                print(f"  [SKIP] {name} ({slug}) - already exists")
                 skipped += 1
         else:
             # Insert new tag
             insert_data = {
                 "slug": slug,
-                "name": tag_name,
+                "name": name,
+                "wordpress_tag_id": wp_id,
+                "wordpress_synced_at": datetime.utcnow().isoformat(),
             }
 
             success, error_msg = await _insert_tag_supabase(insert_data)
             if success:
-                print(f"  [IMPORT] {tag_name} ({slug})")
+                print(f"  [IMPORT] {name} ({slug})")
                 imported += 1
             else:
-                print(f"  [FAIL] {tag_name} ({slug}) - {error_msg}")
+                print(f"  [FAIL] {name} ({slug}) - {error_msg}")
                 errors.append(f"Failed to import {slug}: {error_msg}")
 
     # Summary
@@ -1025,7 +1025,7 @@ async def import_tags_from_shopify(force_pull: bool = False) -> dict:
     print(f"Import complete: {imported} imported, {updated} updated, {skipped} skipped")
     if errors:
         print(f"Errors: {len(errors)}")
-        for err in errors[:5]:
+        for err in errors[:5]:  # Show first 5 errors
             print(f"  - {err}")
 
     return {
@@ -1037,8 +1037,50 @@ async def import_tags_from_shopify(force_pull: bool = False) -> dict:
 
 
 # =============================================================================
-# POST IMPORT (Shopify → Supabase)
+# POST IMPORT (WordPress → Supabase)
 # =============================================================================
+
+def _map_wordpress_status_to_supabase(wp_status: str) -> str:
+    """Map WordPress status to Supabase status."""
+    mapping = {
+        'publish': 'published',
+        'draft': 'draft',
+        'private': 'archived',
+        'future': 'scheduled',
+        'pending': 'draft',
+        'trash': 'archived',
+    }
+    return mapping.get(wp_status, 'draft')
+
+
+def _extract_featured_image_url(wp_post: dict) -> Optional[str]:
+    """Extract featured image URL from WordPress post with _embed data."""
+    try:
+        embedded = wp_post.get("_embedded", {})
+        featured_media = embedded.get("wp:featuredmedia", [])
+        if featured_media and len(featured_media) > 0:
+            media = featured_media[0]
+            # Try to get a reasonable size, fall back to source
+            sizes = media.get("media_details", {}).get("sizes", {})
+            if "large" in sizes:
+                return sizes["large"]["source_url"]
+            elif "medium_large" in sizes:
+                return sizes["medium_large"]["source_url"]
+            return media.get("source_url")
+    except Exception:
+        pass
+    return None
+
+
+def _extract_category_ids(wp_post: dict) -> list:
+    """Extract category IDs from WordPress post."""
+    return wp_post.get("categories", [])
+
+
+def _extract_tag_ids(wp_post: dict) -> list:
+    """Extract tag IDs from WordPress post."""
+    return wp_post.get("tags", [])
+
 
 async def _get_post_by_slug_supabase(slug: str) -> Optional[dict]:
     """Check if a post exists in Supabase by slug."""
@@ -1057,13 +1099,13 @@ async def _get_post_by_slug_supabase(slug: str) -> Optional[dict]:
         return None
 
 
-async def _get_category_by_shopify_gid(gid: str) -> Optional[dict]:
-    """Get Supabase category by Shopify GID."""
+async def _get_category_by_wordpress_id(wp_id: int) -> Optional[dict]:
+    """Get Supabase category by WordPress ID."""
     try:
         async with aiohttp.ClientSession() as session:
             headers = get_supabase_headers()
             async with session.get(
-                f"{SUPABASE_URL}/rest/v1/blog_categories?shopify_blog_gid=eq.{gid}&limit=1",
+                f"{SUPABASE_URL}/rest/v1/blog_categories?wordpress_category_id=eq.{wp_id}&limit=1",
                 headers=headers
             ) as resp:
                 if resp.status == 200:
@@ -1074,10 +1116,21 @@ async def _get_category_by_shopify_gid(gid: str) -> Optional[dict]:
         return None
 
 
-async def _get_tag_by_name_supabase(name: str) -> Optional[dict]:
-    """Get Supabase tag by name (case-insensitive via slug)."""
-    slug = _slugify(name)
-    return await _get_tag_by_slug_supabase(slug)
+async def _get_tag_by_wordpress_id(wp_id: int) -> Optional[dict]:
+    """Get Supabase tag by WordPress ID."""
+    try:
+        async with aiohttp.ClientSession() as session:
+            headers = get_supabase_headers()
+            async with session.get(
+                f"{SUPABASE_URL}/rest/v1/blog_tags?wordpress_tag_id=eq.{wp_id}&limit=1",
+                headers=headers
+            ) as resp:
+                if resp.status == 200:
+                    tags = await resp.json()
+                    return tags[0] if tags else None
+                return None
+    except Exception:
+        return None
 
 
 async def _get_default_author_id() -> Optional[str]:
@@ -1171,36 +1224,36 @@ async def _delete_post_tag_relations(post_id: str) -> bool:
         return False
 
 
-async def import_posts_from_shopify(force_pull: bool = False) -> dict:
+async def import_posts_from_wordpress(force_pull: bool = False) -> dict:
     """
-    Import posts (articles) from Shopify into Supabase.
+    Import posts from WordPress into Supabase.
 
-    This is a reverse sync - pulling existing articles from Shopify
-    into Supabase. Useful when setting up the generator with an existing store.
+    This is a reverse sync - pulling existing posts from WordPress
+    into Supabase. Useful when setting up the generator with an existing blog.
 
-    Shopify HTML content is stored as a single HTML content block in the
+    WordPress HTML content is stored as a single HTML content block in the
     content JSONB field, preserving the original formatting.
 
     Prerequisites:
-    - Import categories first with --shopify-import-categories
-    - Import tags first with --shopify-import-tags
+    - Import categories first with --wordpress-import-categories
+    - Import tags first with --wordpress-import-tags
 
     Args:
-        force_pull: If True, overwrite existing Supabase posts with Shopify data.
+        force_pull: If True, overwrite existing Supabase posts with WordPress data.
                    If False (default), skip posts that already exist.
 
     Returns:
         dict with keys: imported, updated, skipped, errors
     """
-    print("Fetching articles from Shopify...")
+    print("Fetching posts from WordPress...")
 
-    articles = await fetch_all_shopify_articles()
+    wp_posts = await fetch_all_wordpress_posts()
 
-    if not articles:
-        print("No articles found in Shopify (or fetch failed).")
+    if not wp_posts:
+        print("No posts found in WordPress (or fetch failed).")
         return {"imported": 0, "updated": 0, "skipped": 0, "errors": []}
 
-    print(f"Found {len(articles)} articles in Shopify\n")
+    print(f"Found {len(wp_posts)} posts in WordPress\n")
 
     # Get default author
     default_author_id = await _get_default_author_id()
@@ -1212,80 +1265,68 @@ async def import_posts_from_shopify(force_pull: bool = False) -> dict:
     skipped = 0
     errors = []
 
-    for article in articles:
-        gid = article.get("id", "")
-        handle = article.get("handle", "")
-        title = article.get("title", "")
-        content_html = article.get("contentHtml", "")
-        excerpt = article.get("excerpt", "") or ""
-        published_at = article.get("publishedAt", "")
-        tags = article.get("tags", [])
+    for wp_post in wp_posts:
+        wp_id = wp_post.get("id")
+        slug = wp_post.get("slug", "")
+        title = _decode_html_entities(wp_post.get("title", {}).get("rendered", ""))
+        content_html = wp_post.get("content", {}).get("rendered", "")
+        excerpt_html = wp_post.get("excerpt", {}).get("rendered", "")
+        wp_status = wp_post.get("status", "draft")
+        date_str = wp_post.get("date", "")
 
-        if not handle:
-            errors.append(f"Article {gid} has no handle, skipping")
+        if not slug:
+            errors.append(f"Post {wp_id} has no slug, skipping")
             continue
 
-        slug = handle
-
-        # Clean up excerpt
+        # Clean up excerpt (remove HTML tags for plain text excerpt)
+        import re
+        excerpt = re.sub(r'<[^>]+>', '', excerpt_html).strip()
+        excerpt = _decode_html_entities(excerpt)
         if len(excerpt) > 300:
             excerpt = excerpt[:297] + "..."
-        if not excerpt:
-            excerpt = "No excerpt available."
 
         # Store HTML content as a single HTML block
         content_blocks = [{"type": "html", "content": content_html}] if content_html else []
 
-        # Get featured image
-        image_data = article.get("image", {})
-        featured_image = image_data.get("url") if image_data else None
-        featured_image_alt = image_data.get("altText") if image_data else None
+        # Map WordPress status to Supabase status
+        status = _map_wordpress_status_to_supabase(wp_status)
 
-        # Resolve category (blog)
-        blog_data = article.get("blog", {})
-        blog_gid = blog_data.get("id") if blog_data else None
+        # Get featured image URL
+        featured_image = _extract_featured_image_url(wp_post)
+
+        # Resolve category (use first one if multiple)
+        wp_category_ids = _extract_category_ids(wp_post)
         category_id = None
-        if blog_gid:
-            cat = await _get_category_by_shopify_gid(blog_gid)
+        if wp_category_ids:
+            cat = await _get_category_by_wordpress_id(wp_category_ids[0])
             if cat:
                 category_id = cat["id"]
 
         # Resolve tags
+        wp_tag_ids = _extract_tag_ids(wp_post)
         supabase_tag_ids = []
-        for tag_name in tags:
-            tag = await _get_tag_by_name_supabase(tag_name)
+        for wp_tag_id in wp_tag_ids:
+            tag = await _get_tag_by_wordpress_id(wp_tag_id)
             if tag:
                 supabase_tag_ids.append(tag["id"])
-
-        # Get SEO data
-        seo_data = article.get("seo", {})
-        seo = {}
-        if seo_data:
-            if seo_data.get("title"):
-                seo["title"] = seo_data["title"]
-            if seo_data.get("description"):
-                seo["description"] = seo_data["description"]
 
         # Check if post already exists in Supabase
         existing = await _get_post_by_slug_supabase(slug)
 
         if existing:
             if force_pull:
-                # Update existing post with Shopify data
+                # Update existing post with WordPress data
                 update_data = {
                     "title": title,
-                    "excerpt": excerpt,
+                    "excerpt": excerpt or "No excerpt available.",
                     "content": content_blocks,
-                    "status": "published" if published_at else "draft",
+                    "status": status,
                     "featured_image": featured_image,
-                    "featured_image_alt": featured_image_alt,
                     "category_id": category_id,
-                    "shopify_article_id": gid,
-                    "shopify_synced_at": datetime.utcnow().isoformat(),
-                    "shopify_sync_error": None,
+                    "wordpress_post_id": wp_id,
+                    "wordpress_synced_at": datetime.utcnow().isoformat(),
+                    "wordpress_sync_error": None,
                 }
-                if seo:
-                    update_data["seo"] = seo
 
                 success = await _update_post_supabase(existing["id"], update_data)
                 if success:
@@ -1304,23 +1345,20 @@ async def import_posts_from_shopify(force_pull: bool = False) -> dict:
             insert_data = {
                 "slug": slug,
                 "title": title,
-                "excerpt": excerpt,
+                "excerpt": excerpt or "No excerpt available.",
                 "content": content_blocks,
-                "status": "published" if published_at else "draft",
+                "status": status,
                 "featured_image": featured_image,
-                "featured_image_alt": featured_image_alt,
                 "author_id": default_author_id,
                 "category_id": category_id,
-                "shopify_article_id": gid,
-                "shopify_synced_at": datetime.utcnow().isoformat(),
+                "wordpress_post_id": wp_id,
+                "wordpress_synced_at": datetime.utcnow().isoformat(),
             }
-            if seo:
-                insert_data["seo"] = seo
 
             # Parse date if available
-            if published_at:
+            if date_str:
                 try:
-                    insert_data["created_at"] = published_at
+                    insert_data["created_at"] = date_str
                 except Exception:
                     pass
 
@@ -1341,7 +1379,7 @@ async def import_posts_from_shopify(force_pull: bool = False) -> dict:
     print(f"Import complete: {imported} imported, {updated} updated, {skipped} skipped")
     if errors:
         print(f"Errors: {len(errors)}")
-        for err in errors[:5]:
+        for err in errors[:5]:  # Show first 5 errors
             print(f"  - {err}")
 
     return {
@@ -1352,11 +1390,11 @@ async def import_posts_from_shopify(force_pull: bool = False) -> dict:
     }
 
 
-async def import_all_from_shopify(force_pull: bool = False) -> dict:
+async def import_all_from_wordpress(force_pull: bool = False) -> dict:
     """
-    Import all content from Shopify into Supabase.
+    Import all content from WordPress into Supabase.
 
-    Imports in order: categories (blogs), tags, posts (articles).
+    Imports in order: categories, tags, posts.
 
     Args:
         force_pull: If True, overwrite existing Supabase data.
@@ -1367,21 +1405,21 @@ async def import_all_from_shopify(force_pull: bool = False) -> dict:
     results = {}
 
     print("=" * 60)
-    print("IMPORTING CATEGORIES (BLOGS)")
+    print("IMPORTING CATEGORIES")
     print("=" * 60)
-    results["categories"] = await import_categories_from_shopify(force_pull)
+    results["categories"] = await import_categories_from_wordpress(force_pull)
     print()
 
     print("=" * 60)
     print("IMPORTING TAGS")
     print("=" * 60)
-    results["tags"] = await import_tags_from_shopify(force_pull)
+    results["tags"] = await import_tags_from_wordpress(force_pull)
     print()
 
     print("=" * 60)
-    print("IMPORTING POSTS (ARTICLES)")
+    print("IMPORTING POSTS")
     print("=" * 60)
-    results["posts"] = await import_posts_from_shopify(force_pull)
+    results["posts"] = await import_posts_from_wordpress(force_pull)
     print()
 
     # Final summary

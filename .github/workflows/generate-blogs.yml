@@ -102,6 +102,17 @@ jobs:
           SHOPIFY_API_VERSION: ${{ vars.SHOPIFY_API_VERSION }}
           SHOPIFY_DEFAULT_AUTHOR: ${{ vars.SHOPIFY_DEFAULT_AUTHOR }}
           SHOPIFY_SYNC_ON_PUBLISH: ${{ vars.SHOPIFY_SYNC_ON_PUBLISH }}
+
+          # ===========================================
+          # WordPress Sync
+          # ===========================================
+          ENABLE_WORDPRESS_SYNC: ${{ vars.ENABLE_WORDPRESS_SYNC }}
+          WORDPRESS_URL: ${{ vars.WORDPRESS_URL }}
+          WORDPRESS_USERNAME: ${{ secrets.WORDPRESS_USERNAME }}
+          WORDPRESS_APP_PASSWORD: ${{ secrets.WORDPRESS_APP_PASSWORD }}
+          WORDPRESS_DEFAULT_AUTHOR_ID: ${{ vars.WORDPRESS_DEFAULT_AUTHOR_ID }}
+          WORDPRESS_SYNC_ON_PUBLISH: ${{ vars.WORDPRESS_SYNC_ON_PUBLISH }}
+          WORDPRESS_SEO_PLUGIN: ${{ vars.WORDPRESS_SEO_PLUGIN }}
         run: |
           python generator.py --status
 
@@ -169,6 +180,17 @@ jobs:
           SHOPIFY_API_VERSION: ${{ vars.SHOPIFY_API_VERSION }}
           SHOPIFY_DEFAULT_AUTHOR: ${{ vars.SHOPIFY_DEFAULT_AUTHOR }}
           SHOPIFY_SYNC_ON_PUBLISH: ${{ vars.SHOPIFY_SYNC_ON_PUBLISH }}
+
+          # ===========================================
+          # WordPress Sync
+          # ===========================================
+          ENABLE_WORDPRESS_SYNC: ${{ vars.ENABLE_WORDPRESS_SYNC }}
+          WORDPRESS_URL: ${{ vars.WORDPRESS_URL }}
+          WORDPRESS_USERNAME: ${{ secrets.WORDPRESS_USERNAME }}
+          WORDPRESS_APP_PASSWORD: ${{ secrets.WORDPRESS_APP_PASSWORD }}
+          WORDPRESS_DEFAULT_AUTHOR_ID: ${{ vars.WORDPRESS_DEFAULT_AUTHOR_ID }}
+          WORDPRESS_SYNC_ON_PUBLISH: ${{ vars.WORDPRESS_SYNC_ON_PUBLISH }}
+          WORDPRESS_SEO_PLUGIN: ${{ vars.WORDPRESS_SEO_PLUGIN }}
         run: |
           # Use manual input count if provided, otherwise use BLOGS_PER_RUN var, fallback to 1
           COUNT="${{ github.event.inputs.count || vars.BLOGS_PER_RUN || '1' }}"

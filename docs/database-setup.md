@@ -33,7 +33,10 @@ schema/storage_bucket.sql
 # 4. (Optional) Enable Shopify sync
 schema/shopify_sync.sql
 
-# 5. (Optional) Enable link tracking
+# 5. (Optional) Enable WordPress sync
+schema/wordpress_sync.sql
+
+# 6. (Optional) Enable link tracking
 schema/blog_link_tracking.sql
 ```
 
@@ -69,6 +72,11 @@ CREATE TABLE blog_posts (
   shopify_synced_at TIMESTAMPTZ,
   shopify_sync_error TEXT,
 
+  -- WordPress sync fields (optional)
+  wordpress_post_id INTEGER,
+  wordpress_synced_at TIMESTAMPTZ,
+  wordpress_sync_error TEXT,
+
   CONSTRAINT status_check CHECK (status IN ('draft', 'published', 'scheduled', 'archived'))
 );
 ```
@@ -90,7 +98,11 @@ CREATE TABLE blog_categories (
 
   -- Shopify sync fields (optional)
   shopify_blog_gid TEXT,
-  shopify_synced_at TIMESTAMPTZ
+  shopify_synced_at TIMESTAMPTZ,
+
+  -- WordPress sync fields (optional)
+  wordpress_category_id INTEGER,
+  wordpress_synced_at TIMESTAMPTZ
 );
 ```
 

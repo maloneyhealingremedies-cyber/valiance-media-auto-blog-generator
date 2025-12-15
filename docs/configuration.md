@@ -95,6 +95,33 @@ INTERNAL_LINK_PATTERN=/blogs/news/{slug}
 | `SHOPIFY_DEFAULT_AUTHOR` | - | Default author name for articles |
 | `SHOPIFY_SYNC_ON_PUBLISH` | `true` | Auto-sync when posts are created |
 
+## WordPress Sync
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `ENABLE_WORDPRESS_SYNC` | `false` | Enable sync to WordPress |
+| `WORDPRESS_URL` | - | WordPress site URL (no trailing slash) |
+| `WORDPRESS_USERNAME` | - | WordPress username for API auth |
+| `WORDPRESS_APP_PASSWORD` | - | Application Password from WP admin |
+| `WORDPRESS_DEFAULT_AUTHOR_ID` | `1` | WordPress user ID for posts |
+| `WORDPRESS_SYNC_ON_PUBLISH` | `true` | Auto-sync when posts are created |
+| `WORDPRESS_SEO_PLUGIN` | `none` | SEO plugin for meta fields |
+
+### SEO Plugin Options
+
+The `WORDPRESS_SEO_PLUGIN` setting determines which meta fields are populated:
+
+| Value | Plugin | Category SEO |
+|-------|--------|--------------|
+| `yoast` | Yoast SEO | Requires snippet* |
+| `rankmath` | RankMath | Works automatically |
+| `aioseo` | All in One SEO | Works automatically |
+| `seopress` | SEOPress | Works automatically |
+| `flavor` | The SEO Framework | Works automatically |
+| `none` | Don't populate SEO meta | N/A |
+
+*Yoast stores category SEO differently. See [Getting Started with WordPress](setup/wordpress/getting-started-with-wordpress.md) for the required PHP snippet.
+
 ## Example Configurations
 
 ### Minimal Setup
@@ -134,6 +161,23 @@ SHOPIFY_CLIENT_ID=xxxxx
 SHOPIFY_CLIENT_SECRET=xxxxx
 SHOPIFY_DEFAULT_AUTHOR=Staff Writer
 SHOPIFY_SYNC_ON_PUBLISH=true
+```
+
+### With WordPress Sync
+
+```env
+ANTHROPIC_API_KEY=sk-ant-xxxxx
+SUPABASE_URL=https://xxxxx.supabase.co
+SUPABASE_SERVICE_KEY=eyxxxxx
+DEFAULT_AUTHOR_SLUG=staff-writer
+
+ENABLE_WORDPRESS_SYNC=true
+WORDPRESS_URL=https://myblog.com
+WORDPRESS_USERNAME=admin
+WORDPRESS_APP_PASSWORD=xxxx xxxx xxxx xxxx xxxx xxxx
+WORDPRESS_DEFAULT_AUTHOR_ID=1
+WORDPRESS_SYNC_ON_PUBLISH=true
+WORDPRESS_SEO_PLUGIN=yoast
 ```
 
 ### Production Setup
@@ -206,3 +250,5 @@ Key secrets to configure:
 - `GEMINI_API_KEY` (if using images)
 - `SHOPIFY_CLIENT_ID` (if using Shopify)
 - `SHOPIFY_CLIENT_SECRET` (if using Shopify)
+- `WORDPRESS_USERNAME` (if using WordPress)
+- `WORDPRESS_APP_PASSWORD` (if using WordPress)

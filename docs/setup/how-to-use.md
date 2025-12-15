@@ -17,6 +17,10 @@ python generator.py --status
 # Sync everything to Shopify
 python generator.py --shopify-sync-categories
 python generator.py --shopify-sync-all
+
+# Sync everything to WordPress
+python generator.py --wordpress-sync-categories
+python generator.py --wordpress-sync-all
 ```
 
 ---
@@ -216,6 +220,54 @@ python generator.py --shopify-status              # Post sync status
 python generator.py --shopify-status-categories   # Category sync status
 ```
 
+### Import from Shopify
+Import existing blogs from Shopify into Supabase categories.
+
+```bash
+python generator.py --shopify-import-categories               # Import, skip existing
+python generator.py --shopify-import-categories --force-pull  # Overwrite existing
+```
+
+---
+
+## WordPress Sync
+
+Requires `ENABLE_WORDPRESS_SYNC=true` in `.env`.
+
+### Sync Categories
+Categories become WordPress Categories.
+
+```bash
+python generator.py --wordpress-sync-categories                  # Sync all
+python generator.py --wordpress-sync-category "category-slug"    # Sync one
+python generator.py --wordpress-sync-categories --force          # Force re-sync
+```
+
+### Sync Posts
+Posts become WordPress Posts.
+
+```bash
+python generator.py --wordpress-sync-all                 # Sync all posts
+python generator.py --wordpress-sync "post-slug"         # Sync by slug
+python generator.py --wordpress-sync-id "uuid"           # Sync by ID
+python generator.py --wordpress-sync-recent 10           # Sync 10 most recent
+python generator.py --wordpress-sync-all --force         # Force re-sync all
+```
+
+### Check Sync Status
+```bash
+python generator.py --wordpress-status              # Post sync status
+python generator.py --wordpress-status-categories   # Category sync status
+```
+
+### Import from WordPress
+Import existing categories from WordPress into Supabase.
+
+```bash
+python generator.py --wordpress-import-categories               # Import, skip existing
+python generator.py --wordpress-import-categories --force-pull  # Overwrite existing
+```
+
 ---
 
 ## Common Flags
@@ -224,7 +276,8 @@ python generator.py --shopify-status-categories   # Category sync status
 |------|-------|-------------|
 | `--verbose` | `-v` | Print detailed progress and tool calls |
 | `--count N` | `-c N` | Number of items to process |
-| `--force` | | Force sync even if already up-to-date |
+| `--force` | | Force sync even if already up-to-date (push to CMS) |
+| `--force-pull` | | Force overwrite Supabase with CMS data (import commands) |
 
 ---
 
@@ -239,6 +292,7 @@ Key variables that affect CLI behavior:
 | `ENABLE_IMAGE_GENERATION` | Enables `--backfill-images` command |
 | `ENABLE_LINK_BUILDING` | Enables internal linking and `--backfill-links` |
 | `ENABLE_SHOPIFY_SYNC` | Enables all `--shopify-*` commands |
+| `ENABLE_WORDPRESS_SYNC` | Enables all `--wordpress-*` commands |
 
 See [configuration.md](../configuration.md) for full reference.
 
