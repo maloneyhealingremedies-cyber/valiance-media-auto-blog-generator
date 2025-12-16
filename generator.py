@@ -18,8 +18,10 @@ Usage:
     python generator.py --backfill-images-all           # Backfill ALL images
     python generator.py --backfill-links --count 5      # Backfill up to 5 posts
     python generator.py --backfill-links-all            # Backfill ALL links
-    python generator.py --cleanup-image post-slug       # Remove bad image (DB + storage)
-    python generator.py --refresh-image post-slug       # Replace image (cleanup + generate new)
+    python generator.py --cleanup-image post-slug       # Remove image by slug
+    python generator.py --cleanup-image-id post-uuid    # Remove image by post ID
+    python generator.py --refresh-image post-slug       # Replace image by slug
+    python generator.py --refresh-image-id post-uuid    # Replace image by post ID
     python generator.py --batch topics.txt              # Batch from file
     python generator.py --interactive                   # Interactive mode
     python generator.py --status                        # Show queue status
@@ -30,7 +32,9 @@ Examples:
     python generator.py --backfill-images-all
     python generator.py --backfill-links-all
     python generator.py --cleanup-image my-bad-post
+    python generator.py --cleanup-image-id 12e552ce-e7cf-4a42-a98a-6855f11d8708
     python generator.py --refresh-image my-bad-post -v
+    python generator.py --refresh-image-id 12e552ce-e7cf-4a42-a98a-6855f11d8708
 """
 
 import asyncio
@@ -1092,8 +1096,8 @@ Modes:
   BACKFILL IMG:   python generator.py --backfill-images
   BACKFILL LINKS: python generator.py --backfill-links
   CLEANUP LINKS:  python generator.py --cleanup-links-all
-  CLEANUP IMAGE:  python generator.py --cleanup-image post-slug
-  REFRESH IMAGE:  python generator.py --refresh-image post-slug
+  CLEANUP IMAGE:  python generator.py --cleanup-image <slug> | --cleanup-image-id <uuid>
+  REFRESH IMAGE:  python generator.py --refresh-image <slug> | --refresh-image-id <uuid>
   BATCH:          python generator.py --batch topics.txt
   INTERACTIVE:    python generator.py --interactive
   STATUS:         python generator.py --status

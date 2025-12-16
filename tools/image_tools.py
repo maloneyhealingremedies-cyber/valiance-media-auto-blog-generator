@@ -579,9 +579,15 @@ async def generate_image_prompt_and_alt(title: str, excerpt: str = "", verbose: 
 
         prompt = f"""Given this blog post, generate two things:
 
-1. IMAGE_PROMPT: A detailed prompt for generating a featured image. Describe a realistic photograph or scene that would visually represent the topic. Focus on visual elements (lighting, composition, subjects, setting). Do NOT include text, words, or typography in the image. Avoid words like "article", "blog", "guide" that might cause text to render.
+1. IMAGE_PROMPT: A detailed prompt for generating a featured image. Describe a realistic photograph or scene that would visually represent the topic. Focus on visual elements (lighting, composition, subjects, setting).
 
-2. ALT_TEXT: A concise, SEO-friendly alt text that describes what the image shows. This should be descriptive of the image content itself, NOT "Featured image for [title]". Keep it under 125 characters.
+CRITICAL RULES for image prompts:
+- Do NOT include text, words, or typography
+- Do NOT include brand names or product names (AI generators create garbled fake names like "Pinx" instead of "Ping")
+- Use generic descriptions instead (e.g., "premium golf driver" not "Titleist driver")
+- Avoid words like "article", "blog", "guide" that might cause text to render
+
+2. ALT_TEXT: A concise, SEO-friendly alt text that describes what the image shows. This should be descriptive of the image content itself, NOT "Featured image for [title]". Keep it under 125 characters. Do not mention brand names since the image won't show them.
 
 Blog Title: {title}
 Blog Excerpt: {excerpt[:300] if excerpt else 'No excerpt available'}

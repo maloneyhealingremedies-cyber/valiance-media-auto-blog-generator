@@ -49,6 +49,33 @@ Build credibility by:
 - [Types of real-world examples to include]
 - [When to acknowledge limitations]
 
+## [Niche] Image Guidelines
+
+<!--
+  If your niche involves branded products (tech, sports equipment, fashion, etc.),
+  add explicit guidance about avoiding brand names in image prompts.
+  AI image generators create fake/garbled brand names when they try to render logos.
+-->
+
+### Image Prompt Patterns
+[Describe effective image prompts for common content types in your niche]
+
+**Product Reviews:**
+"[Example prompt for product imagery - use generic descriptions, not brand names]"
+
+**Tutorials/How-To:**
+"[Example prompt for instructional content imagery]"
+
+**Lifestyle:**
+"[Example prompt for people/activity imagery]"
+
+### Avoiding Brand Names in Images
+If your niche covers branded products, NEVER include brand names in image prompts.
+AI generators cannot render brand names accurately and will create embarrassing fakes.
+
+**Wrong:** "[Specific Brand] product on display"
+**Correct:** "Premium [product type] with modern design, studio lighting"
+
 ## Quality Checklist for [Niche] Content
 
 Before finalizing, verify:

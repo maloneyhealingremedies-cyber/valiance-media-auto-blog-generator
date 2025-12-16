@@ -96,8 +96,10 @@ python generator.py --backfill-images --count 10
 python generator.py --backfill-images-all
 
 # Clean up or refresh bad featured images
-python generator.py --cleanup-image post-slug      # Remove image (DB + storage)
-python generator.py --refresh-image post-slug      # Replace with new image
+python generator.py --cleanup-image post-slug      # Remove image by slug
+python generator.py --cleanup-image-id <uuid>      # Remove image by post ID
+python generator.py --refresh-image post-slug      # Replace image by slug
+python generator.py --refresh-image-id <uuid>      # Replace image by post ID
 
 # Backfill internal links for existing posts
 python generator.py --backfill-links --count 5

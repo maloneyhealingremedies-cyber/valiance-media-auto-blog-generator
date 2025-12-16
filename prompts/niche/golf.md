@@ -96,12 +96,32 @@ Build credibility by demonstrating real golf knowledge:
 - Physical limitations → TPI-certified trainer
 - Rules disputes → local pro shop or USGA
 
-## Golf Image Prompt Examples
+## Golf Image Guidelines
 
-When generating featured images for golf content, use these patterns:
+### CRITICAL: No Brand Names in Image Prompts
 
-**Equipment Reviews:**
+AI image generators cannot accurately reproduce brand names or logos. When they try, they create embarrassing fake names (e.g., "Pinx" instead of "Ping", "Titlest" instead of "Titleist"). This looks unprofessional and damages credibility.
+
+**NEVER include brand names in image prompts.** Even if the blog post is specifically about Callaway drivers or Titleist balls, the image prompt must describe generic equipment.
+
+**Wrong (will generate fake brand names):**
+- "Ping G430 driver on a tee"
+- "Titleist Pro V1 golf balls"
+- "Set of Callaway Paradym irons"
+- "TaylorMade stealth driver head"
+
+**Correct (generic descriptions):**
+- "Premium golf driver with modern aerodynamic club head on a tee"
+- "Professional-grade white golf balls arranged on green grass"
+- "Set of sleek modern cavity-back irons laid out on a golf bag"
+- "Close-up of a matte black driver head with carbon fiber crown"
+
+### Image Prompt Patterns by Content Type
+
+**Equipment Reviews (even for specific brands):**
 "Close-up of a premium golf driver club head resting on a tee at dawn, dew drops on the grass, soft golden morning light, shallow depth of field with a blurred fairway in background"
+
+"Sleek modern golf irons arranged on a dark surface, studio lighting, product photography style, detailed metal textures"
 
 **Instruction/Technique:**
 "Golfer mid-backswing on a pristine fairway, perfect form, bright sunny day, mountains visible in the distance, professional sports photography style"
@@ -114,6 +134,13 @@ When generating featured images for golf content, use these patterns:
 
 **Practice/Drills:**
 "Golfer practicing putting on a pristine practice green, concentration and focus, soft natural lighting, professional sports photography"
+
+### Alt Text Guidelines
+
+Alt text should be descriptive of the image, not the brand. Since images won't show brand names, alt text shouldn't claim they do.
+
+**Wrong:** "Ping G430 driver on the tee"
+**Correct:** "Modern golf driver positioned on a tee at sunrise"
 
 ## Quality Checklist for Golf Content
 
