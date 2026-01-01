@@ -175,6 +175,49 @@ async def skip_blog_idea(args: dict[str, Any]) -> dict[str, Any]:
         return {"content": [{"type": "text", "text": f"Error: {str(e)}"}], "is_error": True}
 
 
+async def get_pending_idea_count() -> tuple[int, str | None]:
+    """
+    Get the count of pending ideas in the queue.
+
+    This is a lightweight pre-flight check that doesn't invoke the AI agent.
+    Used to determine if there are enough ideas before starting autonomous mode.
+
+    Returns:
+        Tuple of (count, error_message). Error is None on success.
+    """
+    try:
+        async with aiohttp.ClientSession() as session:
+            headers = get_supabase_headers()
+
+            # Use Supabase's count feature with limit=0 for efficiency (no row data returned)
+            count_headers = {**headers, "Prefer": "count=exact"}
+            async with session.get(
+                f"{SUPABASE_URL}/rest/v1/blog_ideas?status=eq.pending&select=id&limit=0",
+                headers=count_headers
+            ) as resp:
+                if resp.status == 200:
+                    # Supabase returns count in content-range header
+                    # Format: "0-0/total" or "*/total" if no results
+                    content_range = resp.headers.get("content-range", "")
+                    if "/" in content_range:
+                        total = content_range.split("/")[-1]
+                        if total and total != "*":
+                            return int(total), None
+                        # total is empty or "*" - means 0 results
+                        return 0, None
+
+                    # Header missing or malformed - treat as error, not as 0 count
+                    # This avoids silently skipping runs when Supabase is misconfigured
+                    return 0, "Content-range header missing from Supabase response"
+
+                # Non-200 response
+                error_text = await resp.text()
+                return 0, f"Failed to check queue: HTTP {resp.status} - {error_text[:100]}"
+
+    except Exception as e:
+        return 0, f"Failed to check queue: {str(e)}"
+
+
 async def get_idea_queue_status(args: dict[str, Any]) -> dict[str, Any]:
     """Get queue status counts."""
     try:

@@ -65,7 +65,7 @@ from config import (
 )
 from tools.query_tools import QUERY_TOOLS
 from tools.write_tools import WRITE_TOOLS
-from tools.idea_tools import IDEA_TOOLS
+from tools.idea_tools import IDEA_TOOLS, get_pending_idea_count
 from tools.image_tools import IMAGE_TOOLS
 from tools.link_tools import LINK_TOOLS, BACKFILL_LINK_TOOLS
 
@@ -428,9 +428,27 @@ async def process_idea_queue(count: int = 1, verbose: bool = False) -> list:
     """
     results = []
 
-    for i in range(count):
+    # Pre-flight check: count available ideas BEFORE starting any agents
+    # This saves tokens by not invoking the AI if there's nothing to process
+    pending_count, error = await get_pending_idea_count()
+
+    if error:
+        # Log warning but proceed anyway - the agent will handle empty queue gracefully
+        print(f"Warning: {error}")
+        print("Proceeding with requested count - agent will handle if queue is empty")
+        actual_count = count
+    elif pending_count == 0:
+        print("No pending ideas in queue - skipping autonomous run")
+        return results
+    else:
+        # Adjust count to available ideas
+        actual_count = min(count, pending_count)
+        if actual_count < count:
+            print(f"Requested {count} ideas but only {pending_count} available - processing {actual_count}")
+
+    for i in range(actual_count):
         print(f"\n{'='*50}")
-        print(f"Processing idea {i+1}/{count}")
+        print(f"Processing idea {i+1}/{actual_count}")
         print("="*50)
 
         initial_message = f"""You are in AUTONOMOUS MODE. Process the next blog idea from the queue.
